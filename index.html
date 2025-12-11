@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Universal Demand Forecasting Tool</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+
+  <style>
+    body { background:#0b1120; margin:0; color:#e5e7eb; font-family:system-ui }
+    .page { padding:20px }
+    .toggle-container { display:flex; justify-content:flex-end; margin-bottom:10px }
+    .toggle-button {
+      padding:6px 14px; border-radius:20px; border:1px solid #38bdf8;
+      background:none; color:#38bdf8; cursor:pointer; margin-left:6px
+    }
+    .toggle-button.active { background:#38bdf8; color:#0b1120; font-weight:600 }
+    .hidden { display:none }
+    table { width:100%; border-collapse:collapse; margin-top:10px; font-size:14px }
+    th, td { border-bottom:1px solid #1f2937; padding:6px }
+    th { color:#9ca3af; text-transform:uppercase; font-size:12px }
+    tr:hover { background:#1e293b; cursor:pointer }
+    .panel { margin-top:20px; padding:15px; background:#111827; border-radius:8px }
+  </style>
+</head>
+
+<body>
+<div class="page">
+
+  <div class="toggle-container">
+    <button id="btn-analyst" class="toggle-button active">Analyst Mode</button>
+    <button id="btn-management" class="toggle-button">Management Mode</button>
+  </div>
+
+  <input id="file-input" type="file" accept=".csv" />
+  <div id="error-box" style="color:#f87171;margin-top:10px"></div>
+
+  <div id="analyst-table" class="panel">
+    <h3>Analyst Summary</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>SKU</th>
+          <th>Class</th>
+          <th>Periods</th>
+          <th>Total Qty</th>
+          <th>Avg</th>
+          <th>MAPE%</th>
+          <th>Forecast</th>
+        </tr>
+      </thead>
+      <tbody id="summary-body"></tbody>
+    </table>
+  </div>
+
+  <div id="management-table" class="panel hidden">
+    <h3>Management Summary</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>SKU</th>
+          <th>Usage Pattern</th>
+          <th>Typical Need</th>
+          <th>Last 30 Days Used</th>
+          <th>Recommendation</th>
+        </tr>
+      </thead>
+      <tbody id="mgmt-body"></tbody>
+    </table>
+  </div>
+
+  <div id="detail-view" class="panel">
+    <h3>Detail View</h3>
+    <div id="detail-content">Upload CSV and click a SKU.</div>
+  </div>
+
+</div>
+
+<script src="main.js"></script>
+</body>
+</html>
