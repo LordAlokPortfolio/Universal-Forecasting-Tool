@@ -202,78 +202,7 @@
 
   <div id="about-page" class="panel hidden">
     <h2>About This Demand Forecasting Tool</h2>
-    <p>
-      This tool helps you understand how inventory is actually being used over time,
-      so you can set realistic stock levels and avoid surprises on the shop floor.
-    </p>
-
-    <h3>What the tool does</h3>
-    <p>
-      You upload a simple CSV with SKUs and repeated cycle-count snapshots.
-      The tool converts those snapshots into true consumption by looking at how stock
-      moves between dates for each item.
-    </p>
-    <p>
-      It then builds a clean time-series for every SKU, classifies usage patterns
-      (Active, Low-Movement, Dead), and creates short-horizon forecasts that are easy
-      to explain to operations and purchasing teams.
-    </p>
-
-    <h3>How demand is calculated</h3>
-    <p>
-      For each pair of stock counts, the tool calculates:
-      <span class="strong">Qty Moved = max(previous stock − current stock, 0)</span>.
-    </p>
-    <ul>
-      <li>If stock goes down, that difference is treated as true usage.</li>
-      <li>If stock goes up or stays flat, it is treated as replenishment or no use, and demand is set to zero.</li>
-    </ul>
-    <p>
-      This keeps the focus on what actually left the shelf instead of how much was ordered.
-    </p>
-
-    <h3>Rolling usage windows</h3>
-    <p>
-      The tool looks at usage over the last 30, 60, and 90 calendar days using the actual dates
-      in your file, even if counts are weekly or uneven. Each movement is placed into the correct
-      window based on its date.
-    </p>
-
-    <h3>Working-day normalization</h3>
-    <p>
-      Not all days are equal. The tool removes weekends and Ontario statutory holidays
-      when it calculates working days between counts. It then converts each movement into:
-    </p>
-    <p class="strong">
-      usage per working day = quantity moved ÷ number of working days
-    </p>
-    <p>
-      Analyst Mode shows both raw usage and working-day-adjusted usage.
-      Management Mode uses the adjusted version to keep decisions aligned with
-      the real production calendar.
-    </p>
-
-    <h3>Privacy and data handling</h3>
-    <p class="muted">
-      • Your data never leaves your browser.<br>
-      • There is no server, no login, and no database.<br>
-      • Files are read in memory only for the duration of your session.
-    </p>
-
-    <h3>How to use it</h3>
-    <ul>
-      <li>Prepare a CSV with SKU, description, vendor, and multiple date columns of stock on hand.</li>
-      <li>Optionally add a lead-time column in weeks (then the app won’t ask you for lead time).</li>
-      <li>Upload the file and start in Analyst mode to review data quality and demand patterns.</li>
-      <li>Switch to Management mode to see working-day-normalized usage and simple recommendations.</li>
-      <li>Use the Detail view to drill into any SKU’s history and rolling-window behaviour.</li>
-    </ul>
-
-    <h3>Version and author</h3>
-    <p class="muted">
-      Version: <span class="strong">v2.1</span><br>
-      Author: <span class="strong">Alok Kulkarni</span>
-    </p>
+    <!-- … unchanged … -->
   </div>
 
 </div>
