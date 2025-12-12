@@ -1,5 +1,3 @@
-"use strict"
-
 /* =========================================================
    UNIVERSAL DEMAND FORECASTING SPA — FINAL MAIN.JS
    COMPLETE REPLACEMENT — STRICT-COMPLIANT — CLIENT-ONLY
@@ -196,11 +194,12 @@ function parseCsv(text) {
 
   state.vendors = [...new Set(state.series.map(s => s.vendor).filter(Boolean))]
   state.vendorFilter = new Set(state.vendors)
-  updateVendorFilterUI()
+  state.vendors.forEach(v => {
+  state.planning.vendorLeadWeeks[v] = state.planning.vendorLeadWeeks[v] || 0
+})
+updateVendorFilterUI()
+renderVendorLeadEditor()
 
-  renderAll()
-  updateValidationPanel()
-}
 
 /* =========================
    ROLLING WINDOWS (BASE)
@@ -591,16 +590,46 @@ function setMode(mode) {
   const mgmt = document.getElementById("management-layout")
   const about = document.getElementById("about-page")
   const validation = document.getElementById("validation-panel")
+  const fileArea = document.getElementById("file-area")
 
   if (analyst) analyst.classList.toggle("hidden", mode !== "analyst")
   if (mgmt) mgmt.classList.toggle("hidden", mode !== "management")
   if (validation) validation.classList.toggle("hidden", mode === "about")
+  if (fileArea) fileArea.classList.toggle("hidden", mode === "about")
   if (about) about.classList.toggle("hidden", mode !== "about")
 
   document.querySelectorAll(".toggle-button").forEach(btn => {
     btn.classList.toggle("active", btn.id === `btn-${mode}`)
   })
 }
+
+
+function renderVendorLeadEditor() {
+  const wrap = document.getElementById("vendor-lead-editor")
+  if (!wrap) return
+  if (!state.vendors.length) {
+    wrap.innerHTML = '<div class="muted">Upload a CSV to configure vendor lead time.</div>'
+    return
+  }
+  wrap.innerHTML = `
+    <div class="vendor-lead-editor-title">Vendor lead time (weeks)</div>
+    ${state.vendors.map(v => `
+      <div class="vendor-lead-row">
+        <span>${v}</span>
+        <input type="number" min="0" step="0.5" value="${state.planning.vendorLeadWeeks[v] || ""}" data-vendor="${v}" />
+      </div>
+    `).join("")}
+  `
+  wrap.querySelectorAll("input[data-vendor]").forEach(inp => {
+    inp.oninput = e => {
+      const v = e.target.getAttribute("data-vendor")
+      const val = Number(e.target.value)
+      if (Number.isFinite(val)) state.planning.vendorLeadWeeks[v] = val
+      renderManagement()
+    }
+  })
+}
+
 
 
 document.addEventListener("DOMContentLoaded", () => {
