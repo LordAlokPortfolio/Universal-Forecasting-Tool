@@ -590,13 +590,18 @@ function setMode(mode) {
   const analyst = document.getElementById("analyst-table")
   const mgmt = document.getElementById("management-layout")
   const about = document.getElementById("about-page")
+  const validation = document.getElementById("validation-panel")
+
   if (analyst) analyst.classList.toggle("hidden", mode !== "analyst")
   if (mgmt) mgmt.classList.toggle("hidden", mode !== "management")
+  if (validation) validation.classList.toggle("hidden", mode === "about")
   if (about) about.classList.toggle("hidden", mode !== "about")
+
   document.querySelectorAll(".toggle-button").forEach(btn => {
     btn.classList.toggle("active", btn.id === `btn-${mode}`)
   })
 }
+
 
 document.addEventListener("DOMContentLoaded", () => {
   const btnAnalyst = document.getElementById("btn-analyst")
