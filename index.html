@@ -50,6 +50,55 @@
     #about-page li { margin:2px 0 }
     .muted { color:#9ca3af; font-size:13px }
     .strong { font-weight:600 }
+
+    /* Management planning controls */
+    .planning-controls {
+      display:flex;
+      flex-wrap:wrap;
+      justify-content:space-between;
+      align-items:flex-start;
+      gap:12px;
+      margin-bottom:8px;
+      font-size:13px;
+    }
+    .planning-window { min-width:180px }
+    .planning-buttons { display:flex; gap:6px; margin-top:4px; flex-wrap:wrap }
+    .chip-button {
+      padding:4px 10px;
+      border-radius:999px;
+      border:1px solid #38bdf8;
+      background:none;
+      color:#38bdf8;
+      cursor:pointer;
+      font-size:12px;
+    }
+    .chip-button.active {
+      background:#38bdf8;
+      color:#0b1120;
+      font-weight:600;
+    }
+    .vendor-lead-editor { flex:1; min-width:220px }
+    .vendor-lead-editor-title {
+      color:#9ca3af;
+      font-size:12px;
+      text-transform:uppercase;
+    }
+    .vendor-lead-row {
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:6px;
+      margin-top:4px;
+    }
+    .vendor-lead-row input {
+      width:70px;
+      padding:2px 4px;
+      border-radius:4px;
+      border:1px solid #1f2937;
+      background:#020617;
+      color:#e5e7eb;
+      font-size:12px;
+    }
   </style>
 </head>
 
@@ -117,6 +166,21 @@
 
   <div id="management-table" class="panel hidden">
     <h3>Management Summary</h3>
+
+    <div id="planning-controls" class="planning-controls">
+      <div class="planning-window">
+        <div class="validation-label">Planning window</div>
+        <div class="planning-buttons">
+          <button id="btn-win-30" class="chip-button">30 days</button>
+          <button id="btn-win-60" class="chip-button">60 days</button>
+          <button id="btn-win-90" class="chip-button active">90 days</button>
+        </div>
+      </div>
+      <div id="vendor-lead-editor" class="vendor-lead-editor">
+        <div class="muted">Upload a CSV to configure vendor lead time.</div>
+      </div>
+    </div>
+
     <table>
       <thead>
         <tr>
@@ -198,7 +262,8 @@
 
     <h3>How to use it</h3>
     <ul>
-      <li>Prepare a CSV with SKU, description, and multiple date columns of stock on hand.</li>
+      <li>Prepare a CSV with SKU, description, vendor, and multiple date columns of stock on hand.</li>
+      <li>Optionally add a lead-time column in weeks (then the app won’t ask you for lead time).</li>
       <li>Upload the file and start in Analyst mode to review data quality and demand patterns.</li>
       <li>Switch to Management mode to see working-day-normalized usage and simple recommendations.</li>
       <li>Use the Detail view to drill into any SKU’s history and rolling-window behaviour.</li>
@@ -206,7 +271,7 @@
 
     <h3>Version and author</h3>
     <p class="muted">
-      Version: <span class="strong">v2.0</span><br>
+      Version: <span class="strong">v2.1</span><br>
       Author: <span class="strong">Alok Kulkarni</span>
     </p>
   </div>
