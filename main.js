@@ -202,7 +202,7 @@ function parseCsv(text) {
 
   updateVendorFilterUI()
   renderVendorLeadEditor()
-
+}
 
 
 /* =========================
@@ -688,4 +688,3 @@ document.addEventListener("DOMContentLoaded", () => {
 /* ========================================================= */
 /*   END OF UNIVERSAL DEMAND FORECASTING SPA — MAIN.JS
    ========================================================= */
-}
