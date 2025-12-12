@@ -194,11 +194,15 @@ function parseCsv(text) {
 
   state.vendors = [...new Set(state.series.map(s => s.vendor).filter(Boolean))]
   state.vendorFilter = new Set(state.vendors)
+
   state.vendors.forEach(v => {
-  state.planning.vendorLeadWeeks[v] = state.planning.vendorLeadWeeks[v] || 0
-})
-updateVendorFilterUI()
-renderVendorLeadEditor()
+    state.planning.vendorLeadWeeks[v] =
+      state.planning.vendorLeadWeeks[v] ?? 0
+  })
+
+  updateVendorFilterUI()
+  renderVendorLeadEditor()
+
 
 
 /* =========================
@@ -586,6 +590,7 @@ function renderAll() {
 
 function setMode(mode) {
   state.mode = mode
+
   const analyst = document.getElementById("analyst-table")
   const mgmt = document.getElementById("management-layout")
   const about = document.getElementById("about-page")
@@ -602,6 +607,7 @@ function setMode(mode) {
     btn.classList.toggle("active", btn.id === `btn-${mode}`)
   })
 }
+
 
 
 function renderVendorLeadEditor() {
@@ -682,3 +688,4 @@ document.addEventListener("DOMContentLoaded", () => {
 /* ========================================================= */
 /*   END OF UNIVERSAL DEMAND FORECASTING SPA — MAIN.JS
    ========================================================= */
+}
