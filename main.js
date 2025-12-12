@@ -202,6 +202,8 @@ function parseCsv(text) {
 
   updateVendorFilterUI()
   renderVendorLeadEditor()
+  renderAll()
+  setMode(state.mode)
 }
 
 
@@ -432,6 +434,7 @@ function updateValidationPanel() {
 ========================= */
 
 function renderAnalyst() {
+   if (state.mode !== "analyst") return
   const tbody = document.getElementById("summary-body")
   if (!tbody) return
   tbody.innerHTML = ""
@@ -455,6 +458,7 @@ function renderAnalyst() {
 ========================= */
 
 function renderManagement() {
+  if (state.mode !== "management") return
   const tbody = document.getElementById("mgmt-body")
   if (!tbody) return
   tbody.innerHTML = ""
