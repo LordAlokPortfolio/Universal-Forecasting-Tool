@@ -68,11 +68,6 @@
     #detail-content h4 { margin:0 0 6px 0; font-size:14px }
     #detail-content .section { margin-top:10px }
 
-    #about-page h2 { margin-top:0; margin-bottom:8px; font-size:20px }
-    #about-page h3 { margin-top:14px; margin-bottom:6px; font-size:15px }
-    #about-page p { margin:4px 0; font-size:14px; color:#d1d5db; line-height:1.5 }
-    #about-page ul { margin:6px 0 6px 18px; padding:0; font-size:14px; color:#d1d5db }
-    #about-page li { margin:3px 0 }
     .muted { color:#9ca3af; font-size:13px }
     .strong { font-weight:600 }
 
@@ -88,12 +83,10 @@
     #detail-view { flex:1 1 260px }
 
     @media (max-width: 900px) {
-      .layout-main {
-        flex-direction:column;
-      }
+      .layout-main { flex-direction:column }
     }
 
-    /* Management planning controls */
+    /* Planning controls */
     .planning-controls {
       display:flex;
       flex-wrap:wrap;
@@ -104,23 +97,9 @@
       font-size:13px;
     }
 
-    .planning-window { min-width:180px }
-    .planning-buttons { display:flex; gap:6px; margin-top:4px; flex-wrap:wrap }
-
-    .chip-button {
-      padding:4px 10px;
-      border-radius:999px;
-      border:1px solid #38bdf8;
-      background:none;
-      color:#38bdf8;
-      cursor:pointer;
-      font-size:12px;
-    }
-    .chip-button.active {
-      background:#38bdf8;
-      color:#0b1120;
-      font-weight:600;
-    }
+    .planning-window { min-width:240px }
+    .planning-window input[type="range"] { width:200px }
+    .planning-window .toggle-row { margin-top:6px; display:flex; align-items:center; gap:8px }
 
     .vendor-lead-editor { flex:1; min-width:220px }
     .vendor-lead-editor-title {
@@ -143,6 +122,17 @@
       background:#020617;
       color:#e5e7eb;
       font-size:12px;
+    }
+
+    .vendor-filter { min-width:200px }
+    .vendor-filter select {
+      width:100%;
+      background:#020617;
+      color:#e5e7eb;
+      border:1px solid #1f2937;
+      border-radius:6px;
+      padding:6px;
+      min-height:60px;
     }
   </style>
 </head>
@@ -189,7 +179,7 @@
       Overall Status:
       <span id="validation-score" class="badge badge-good">Waiting for data</span>
     </div>
-    <div id="validation-details" class="validation-grid">
+    <div class="validation-grid">
       <div class="validation-item">
         <div class="validation-label">Missing stock entries</div>
         <div class="validation-value" id="val-missing">0</div>
@@ -213,21 +203,27 @@
     </div>
   </div>
 
-  <!-- MANAGEMENT + DETAIL SIDE-BY-SIDE -->
+  <!-- MANAGEMENT -->
   <div id="management-layout" class="layout-main hidden">
 
-    <!-- MANAGEMENT TABLE -->
     <div id="management-table" class="panel">
       <h3>Management Summary</h3>
 
       <div id="planning-controls" class="planning-controls">
         <div class="planning-window">
-          <div class="validation-label">Planning window</div>
-          <div class="planning-buttons">
-            <button id="btn-win-30" class="chip-button">30 days</button>
-            <button id="btn-win-60" class="chip-button">60 days</button>
-            <button id="btn-win-90" class="chip-button active">90 days</button>
+          <div class="validation-label">Historical usage window</div>
+          <div>
+            <input type="range" id="hist-slider" min="30" max="365" step="30" value="90" />
           </div>
+          <div class="toggle-row">
+            <label><input type="checkbox" id="hist-all" /> All</label>
+            <span id="hist-label">Last 90 days</span>
+          </div>
+        </div>
+
+        <div id="vendor-filter" class="vendor-filter hidden">
+          <div class="validation-label">Vendor filter</div>
+          <select id="vendor-filter-select" multiple size="3"></select>
         </div>
 
         <div id="vendor-lead-editor" class="vendor-lead-editor">
@@ -241,7 +237,6 @@
             <th>SKU</th>
             <th>Pattern</th>
             <th>Adj Usage / Working Day</th>
-            <th>30 / 60 / 90 Days (Adj)</th>
             <th>Recommendation</th>
           </tr>
         </thead>
@@ -249,7 +244,6 @@
       </table>
     </div>
 
-    <!-- DETAIL VIEW -->
     <div id="detail-view" class="panel">
       <h3>Detail View</h3>
       <div id="detail-content">Upload a CSV file and click a SKU.</div>
@@ -257,7 +251,7 @@
 
   </div>
 
-  <!-- ABOUT PAGE -->
+ <!-- ABOUT PAGE -->
   <div id="about-page" class="panel hidden">
     <h2>About This Demand Forecasting Tool</h2>
 
@@ -289,7 +283,7 @@
 
     <h3>Planning windows</h3>
     <p>
-      Management mode allows switching between 30, 60, and 90-day adjusted usage.
+      Management mode allows switching between 30, 60, and 90-day adjusted usage or all history.
       All recommendations respond instantly to the selected planning window.
     </p>
 
@@ -297,6 +291,13 @@
     <p>
       If your file includes a vendor lead-time column, it is auto-used.  
       If not, you can enter lead times directly in the management panel.
+    </p>
+
+    <h3>Decision metrics</h3>
+    <p>
+      Management mode overlays runout windows, stockout risk, coverage vs lead time,
+      volatility, and acceleration into plain-language badges—using the same adjusted usage
+      math as Analyst mode. No additional demand parsing or external services are used.
     </p>
 
     <h3>Privacy and data handling</h3>

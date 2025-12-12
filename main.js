@@ -1,786 +1,650 @@
-"use strict";
+"use strict"
+
+/* =========================================================
+   UNIVERSAL DEMAND FORECASTING SPA — FINAL MAIN.JS
+   COMPLETE REPLACEMENT — STRICT-COMPLIANT — CLIENT-ONLY
+========================================================= */
+
+/* =========================
+   CONSTANTS
+========================= */
 
 const HOLIDAYS = new Set([
-  // Ontario statutory holidays (observed) 2024
-  "2024-01-01",
-  "2024-02-19",
-  "2024-03-29",
-  "2024-05-20",
-  "2024-07-01",
-  "2024-09-02",
-  "2024-10-14",
-  "2024-12-25",
-  "2024-12-26",
-  // 2025
-  "2025-01-01",
-  "2025-02-17",
-  "2025-04-18",
-  "2025-05-19",
-  "2025-07-01",
-  "2025-09-01",
-  "2025-10-13",
-  "2025-12-25",
-  "2025-12-26",
-  // 2026 (forward-compatible)
-  "2026-01-01",
-  "2026-02-16",
-  "2026-04-03",
-  "2026-05-18",
-  "2026-07-01",
-  "2026-09-07",
-  "2026-10-12",
-  "2026-12-25",
-  "2026-12-28"
+  "2024-01-01","2024-02-19","2024-03-29","2024-05-20","2024-07-01","2024-09-02","2024-10-14","2024-12-25","2024-12-26",
+  "2025-01-01","2025-02-17","2025-04-18","2025-05-19","2025-07-01","2025-09-01","2025-10-13","2025-12-25","2025-12-26",
+  "2026-01-01","2026-02-16","2026-04-03","2026-05-18","2026-07-01","2026-09-07","2026-10-12","2026-12-25","2026-12-28"
 ])
 
-const MONTH_MAP = {
-  jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
-  jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12
-}
+/* =========================
+   GLOBAL STATE
+========================= */
 
 const state = {
-  series: [],
   mode: "analyst",
-  validation: null,
+  rows: [],
+  series: [],
+  expandedSku: null,
+  vendors: [],
+  vendorFilter: new Set(),
   planning: {
-    window: 90,                    // 30 / 60 / 90
-    vendorLeadWeeks: {},           // { vendorName: weeks }
-    hasVendorColumn: false,
-    hasLeadColumn: false
+    windowDays: 90,
+    allHistory: false,
+    vendorLeadWeeks: {}
+  },
+  validation: {
+    missing: 0,
+    nonChrono: false,
+    invalid: 0,
+    replenish: 0,
+    duplicates: 0
   }
 }
 
-function parseIsoDate(d) {
-  return new Date(d + "T00:00:00")
-}
+/* =========================
+   DATE / WORKDAY UTILS
+========================= */
 
-function formatIso(y, m, day) {
-  const mm = m < 10 ? "0" + m : String(m)
-  const dd = day < 10 ? "0" + day : String(day)
-  return `${y}-${mm}-${dd}`
-}
+const isoDate = d => new Date(d + "T00:00:00")
 
 function isWorkingDay(iso) {
-  const d = parseIsoDate(iso)
-  const dow = d.getUTCDay()
-  const weekend = dow === 0 || dow === 6
-  if (weekend) return false
-  if (HOLIDAYS.has(iso)) return false
-  return true
+  const d = isoDate(iso)
+  const w = d.getUTCDay()
+  return w !== 0 && w !== 6 && !HOLIDAYS.has(iso)
 }
 
 function countWorkingDays(startIso, endIso) {
-  const start = parseIsoDate(startIso)
-  const end = parseIsoDate(endIso)
-  if (end <= start) return 0
-  let count = 0
-  const d = new Date(start.getTime())
+  const s = isoDate(startIso)
+  const e = isoDate(endIso)
+  if (e <= s) return 0
+  let c = 0
+  const d = new Date(s)
   d.setUTCDate(d.getUTCDate() + 1)
-  while (d <= end) {
+  while (d <= e) {
     const iso = d.toISOString().slice(0, 10)
-    if (isWorkingDay(iso)) count += 1
+    if (isWorkingDay(iso)) c++
     d.setUTCDate(d.getUTCDate() + 1)
   }
-  return count
+  return c
 }
+
+const MONTHS = {
+  jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,sept:8,oct:9,nov:10,dec:11
+}
+
+function normalizeHeaderDate(label) {
+  const clean = String(label).trim()
+  if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) {
+    const d = isoDate(clean)
+    return isNaN(d) ? null : { iso: clean, date: d }
+  }
+  const short = clean.match(/^(\d{1,2})[ \-/](\w{3,})$/i)
+  if (short) {
+    const day = Number(short[1])
+    const month = MONTHS[short[2].toLowerCase()]
+    if (Number.isFinite(day) && month >= 0) {
+      const year = new Date().getUTCFullYear()
+      const d = new Date(Date.UTC(year, month, day))
+      const iso = d.toISOString().slice(0, 10)
+      return { iso, date: d }
+    }
+  }
+  return null
+}
+
+/* =========================
+   CSV PARSE & SERIES BUILD
+========================= */
+
+function parseCsv(text) {
+  const parsed = Papa.parse(text, { header: true, skipEmptyLines: true })
+  const fields = parsed.meta.fields || []
+  const rows = parsed.data || []
+  if (!fields.length) return
+
+  const skuCol = fields.find(f => f.toLowerCase() === "sku") || fields[0]
+  const descCol = fields.find(f => f.toLowerCase().includes("desc"))
+  const vendorCol = fields.find(f => /vendor|supplier/i.test(f))
+  const leadCol = fields.find(f => /lead.*week/i.test(f))
+
+  const dateCandidates = fields
+    .map((f, idx) => {
+      const norm = normalizeHeaderDate(f)
+      return norm ? { header: f, iso: norm.iso, date: norm.date, originalIndex: idx } : null
+    })
+    .filter(Boolean)
+  const sortedDates = [...dateCandidates].sort((a, b) => a.date - b.date)
+  const nonChrono = dateCandidates.some((c, i) => c.header !== sortedDates[i]?.header)
+  if (sortedDates.length < 2) return
+
+  let missingStock = 0
+  let invalidValues = 0
+  let replenishmentJumps = 0
+  let duplicates = 0
+  const seenSku = new Set()
+  const map = new Map()
+
+  rows.forEach(r => {
+    const sku = String(r[skuCol] || "").trim()
+    if (!sku) return
+    if (seenSku.has(sku)) duplicates++
+    else seenSku.add(sku)
+
+    sortedDates.forEach(col => {
+      const rawVal = r[col.header]
+      if (rawVal === "" || rawVal === null || rawVal === undefined) missingStock++
+      const num = Number(rawVal)
+      if (!Number.isFinite(num) || num < 0) invalidValues++
+    })
+
+    if (!map.has(sku)) {
+      map.set(sku, {
+        sku,
+        description: descCol ? String(r[descCol] || "") : "",
+        vendor: vendorCol ? String(r[vendorCol] || "") : "",
+        lead: leadCol ? Number(r[leadCol] || 0) : 0,
+        history: []
+      })
+    }
+
+    const s = map.get(sku)
+
+    for (let i = 1; i < sortedDates.length; i++) {
+      const prevCol = sortedDates[i - 1]
+      const curCol = sortedDates[i]
+      const prev = Number(r[prevCol.header] || 0)
+      const cur = Number(r[curCol.header] || 0)
+      const moved = Math.max(prev - cur, 0)
+      if (cur > prev) replenishmentJumps++
+      const wd = countWorkingDays(prevCol.iso, curCol.iso)
+      s.history.push({
+        date: curCol.iso,
+        qty: moved,
+        workingDays: wd,
+        ratePerWorkingDay: wd > 0 ? moved / wd : 0
+      })
+    }
+  })
+
+  state.validation = {
+    missing: missingStock,
+    nonChrono,
+    invalid: invalidValues,
+    replenish: replenishmentJumps,
+    duplicates
+  }
+
+  state.series = [...map.values()].map(s => {
+    const total = s.history.reduce((a, b) => a + b.qty, 0)
+    const nonZero = s.history.filter(h => h.qty > 0).length
+    const classification =
+      total === 0 ? "Dead" :
+      nonZero <= 2 ? "Low-Movement" :
+      "Active"
+
+    const windows = computeWindows(s.history)
+    const forecastStats = computeForecastStats(s.history)
+
+    return {
+      ...s,
+      totalQty: total,
+      classification,
+      ...windows,
+      forecast: forecastStats.forecast,
+      mape: forecastStats.mape
+    }
+  })
+
+  state.vendors = [...new Set(state.series.map(s => s.vendor).filter(Boolean))]
+  state.vendorFilter = new Set(state.vendors)
+  updateVendorFilterUI()
+
+  renderAll()
+  updateValidationPanel()
+}
+
+/* =========================
+   ROLLING WINDOWS (BASE)
+========================= */
 
 function computeWindows(history) {
   const zero = { raw: 0, workingDays: 0, adjusted: 0 }
-  if (history.length === 0) {
+  if (!history.length) {
     return { window30: zero, window60: zero, window90: zero }
   }
-  const maxDateIso = history[history.length - 1].date
-  const maxDate = parseIsoDate(maxDateIso)
 
-  function windowFor(days) {
+  const max = isoDate(history.at(-1).date)
+
+  const calc = days => {
     let raw = 0
     let wd = 0
-    for (const p of history) {
-      const d = parseIsoDate(p.date)
-      const diffDays = Math.floor((maxDate.getTime() - d.getTime()) / 86400000)
-      if (diffDays >= 0 && diffDays < days) {
+    history.forEach(p => {
+      const diff = Math.floor((max - isoDate(p.date)) / 86400000)
+      if (diff >= 0 && diff < days) {
         raw += p.qty
         wd += p.workingDays
       }
-    }
-    const adjusted = wd > 0 ? raw / wd : 0
-    return { raw, workingDays: wd, adjusted }
+    })
+    return { raw, workingDays: wd, adjusted: wd > 0 ? raw / wd : 0 }
   }
 
-  const window30 = windowFor(30)
-  const window60 = windowFor(60)
-  const window90 = windowFor(90)
-  return { window30, window60, window90 }
+  return {
+    window30: calc(30),
+    window60: calc(60),
+    window90: calc(90)
+  }
 }
 
-// which window to use for recommendations / “Adj usage per working day”
-function getPlanningUsage(s) {
-  const w = state.planning.window
-  if (w === 30) return s.window30.adjusted || 0
-  if (w === 60) return s.window60.adjusted || 0
-  if (w === 90) return s.window90.adjusted || 0
-  return s.avgPerWorkingDay || 0
+/* =========================
+   HISTORICAL USAGE SELECTOR
+========================= */
+
+function getAdjustedUsage(s) {
+  if (state.planning.allHistory) {
+    const wd = s.history.reduce((a, b) => a + b.workingDays, 0)
+    return wd > 0 ? s.totalQty / wd : 0
+  }
+  if (state.planning.windowDays === 30) return s.window30.adjusted
+  if (state.planning.windowDays === 60) return s.window60.adjusted
+  if (state.planning.windowDays === 90) return s.window90.adjusted
+  return s.window90.adjusted
 }
 
-// analyst-level class labels (used as a qualifier inside detail)
-function usageLabel(cls) {
-  if (cls === "Active") return "Regular mover"
-  if (cls === "Low-Movement") return "Slow mover"
-  return "No recent usage"
-}
+/* =========================
+   PATTERN & RECOMMENDATION
+========================= */
 
-// management-facing pattern text using 30d vs 90d behaviour
 function patternLabel(s) {
   if (s.classification === "Dead") return "No recent usage"
-  if (s.classification === "Low-Movement") return "Infrequent usage"
+  if (s.classification === "Low-Movement") return "Intermittent usage"
 
   const base = s.window90.adjusted
   const recent = s.window30.adjusted
-
   if (base === 0 && recent === 0) return "Stable at low usage"
 
-  const ratio = base > 0 ? (recent - base) / base : 0
-  if (ratio > 0.25) return "Demand increasing (last 30d > 90d)"
-  if (ratio < -0.25) return "Demand slowing (last 30d < 90d)"
+  const delta = base > 0 ? (recent - base) / base : 0
+  if (delta > 0.25) return "Demand increasing"
+  if (delta < -0.25) return "Demand slowing"
   return "Stable demand"
 }
 
-// vendor-specific, lead-time aware recommendation
-function recommendation(s) {
-  const adj = getPlanningUsage(s)
-
-  if (s.classification === "Dead" || (s.window90.raw === 0 && s.totalQty === 0)) {
-    return "Hold at zero and order only when a real requirement appears."
-  }
-  if (s.classification === "Low-Movement") {
-    return `Keep minimal stock based on roughly ${adj.toFixed(2)} units per working day.`
-  }
-
-  const weeklyNeed = adj * 5
-  const vendor = s.vendor || ""
-  let leadWeeks = vendor ? (state.planning.vendorLeadWeeks[vendor] || 0) : 0
-  if (!leadWeeks || leadWeeks <= 0) {
-    // fallback if user hasn’t entered anything
-    leadWeeks = 2
-  }
-  const buffer = Math.max(Math.round(weeklyNeed * leadWeeks), 1)
-
-  if (vendor) {
-    return `Plan for about ${Math.round(weeklyNeed)} units per week and keep ${buffer} units (~${leadWeeks} weeks of cover for ${vendor}).`
-  }
-  return `Plan for about ${Math.round(weeklyNeed)} units per week and keep ${buffer} units (~${leadWeeks} weeks of cover).`
+function recommendationText(s) {
+  const daily = getAdjustedUsage(s)
+  const weekly = daily * 5
+  const lt = s.lead || state.planning.vendorLeadWeeks[s.vendor] || 2
+  const buffer = Math.max(1, Math.round(weekly * lt))
+  return `Weekly need: ~${Math.round(weekly)} | Buffer: ${buffer} | Cover: ~${lt} weeks`
 }
 
-function parseCsv(text) {
-  const out = Papa.parse(text, { header: true, skipEmptyLines: true })
-  const fields = out.meta.fields || []
-  const rows = out.data
-  const errorBox = document.getElementById("error-box")
-  if (errorBox) errorBox.textContent = ""
+/* =========================
+   FORECAST & MAPE
+========================= */
 
-  if (fields.length === 0) {
-    if (errorBox) errorBox.textContent = "No header row detected in CSV."
-    state.series = []
-    state.validation = null
-    renderAnalystTable()
-    renderManagementTable()
-    renderValidation()
-    renderVendorLeadEditor()
-    return
-  }
+function computeForecastStats(history) {
+  if (history.length === 0) return { forecast: 0, mape: null }
+  const qty = history.map(h => h.qty)
+  const forecast = qty.slice(-3).reduce((a, b) => a + b, 0) / Math.min(3, qty.length)
+  if (qty.length < 4) return { forecast, mape: null }
 
-  const headerInfos = []
-  const isoRegex = /^\d{4}-\d{2}-\d{2}$/
-  const shortRegex = /^\s*(\d{1,2})[-\/\s](Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s*$/i
-
-  fields.forEach((f, idx) => {
-    const trimmed = String(f).trim()
-    let isDate = false
-    let iso
-    let shortDay
-    let shortMonth
-
-    if (isoRegex.test(trimmed)) {
-      isDate = true
-      iso = trimmed
-    } else {
-      const m = trimmed.match(shortRegex)
-      if (m) {
-        isDate = true
-        const day = parseInt(m[1], 10)
-        const monKey = m[2].toLowerCase().slice(0, 3)
-        const mon = MONTH_MAP[monKey]
-        if (mon && day >= 1 && day <= 31) {
-          shortDay = day
-          shortMonth = mon
-        } else {
-          isDate = false
-        }
-      }
-    }
-
-    headerInfos.push({
-      field: f,
-      index: idx,
-      isDate,
-      iso,
-      shortDay,
-      shortMonth
-    })
-  })
-
-  const dateHeadersOriginal = headerInfos.filter(h => h.isDate)
-  const shortHeaders = dateHeadersOriginal.filter(h => !h.iso && h.shortMonth && h.shortDay)
-
-  if (shortHeaders.length > 0) {
-    const currentYear = new Date().getFullYear()
-    let year = currentYear
-    let prevMonth = null
-    const ordered = shortHeaders.slice().sort((a, b) => a.index - b.index)
-    ordered.forEach(h => {
-      const month = h.shortMonth
-      const day = h.shortDay
-      if (prevMonth !== null && month < prevMonth) {
-        year += 1
-      }
-      prevMonth = month
-      h.iso = formatIso(year, month, day)
-    })
-  }
-
-  const dateHeadersWithIso = dateHeadersOriginal.filter(h => h.iso)
-  if (dateHeadersWithIso.length === 0) {
-    if (errorBox) {
-      errorBox.textContent =
-        "No recognizable date columns found. Use ISO dates (YYYY-MM-DD) or formats like 9-Dec."
-    }
-    state.series = []
-    state.validation = null
-    renderAnalystTable()
-    renderManagementTable()
-    renderValidation()
-    renderVendorLeadEditor()
-    return
-  }
-
-  const dateHeadersSorted = dateHeadersWithIso
-    .slice()
-    .sort((a, b) => Date.parse(a.iso) - Date.parse(b.iso))
-
-  let nonChronological = false
-  if (dateHeadersWithIso.length > 1) {
-    const originalOrder = dateHeadersWithIso.slice().sort((a, b) => a.index - b.index)
-    for (let i = 0; i < originalOrder.length; i += 1) {
-      if (originalOrder[i].field !== dateHeadersSorted[i].field) {
-        nonChronological = true
-        break
-      }
-    }
-  }
-
-  const skuCol = fields.find(f => f.toLowerCase() === "sku") || fields[0]
-  const descCol = fields.find(f => f.toLowerCase().includes("desc")) || ""
-
-  // vendor + optional lead-time column
-  const vendorCol =
-    fields.find(f => {
-      const low = f.toLowerCase()
-      return low.includes("vendor") || low.includes("supplier")
-    }) || ""
-  const leadCol =
-    fields.find(f => {
-      const low = f.toLowerCase()
-      return low.includes("lead") && low.includes("week")
-    }) || ""
-
-  state.planning.hasVendorColumn = !!vendorCol
-  state.planning.hasLeadColumn = !!leadCol
-  state.planning.vendorLeadWeeks = {}
-
-  const validation = {
-    missingStockCells: 0,
-    nonChronological,
-    invalidStockCells: 0,
-    replenishmentEvents: 0,
-    duplicateSkus: []
-  }
-
-  const seenSkus = new Map()
-  const duplicateSet = new Set()
-  const series = []
-
-  rows.forEach(row => {
-    const rawSku = row[skuCol]
-    const sku = String(rawSku || "").trim()
-    if (!sku) return
-
-    const prevCount = seenSkus.get(sku) || 0
-    seenSkus.set(sku, prevCount + 1)
-    if (prevCount + 1 > 1) duplicateSet.add(sku)
-
-    // vendor + lead time collection
-    const vendor = vendorCol ? String(row[vendorCol] || "").trim() : ""
-    if (vendor) {
-      if (!Object.prototype.hasOwnProperty.call(state.planning.vendorLeadWeeks, vendor)) {
-        state.planning.vendorLeadWeeks[vendor] = 0
-      }
-      if (leadCol) {
-        const ltRaw = row[leadCol]
-        const lt = ltRaw === null || ltRaw === undefined ? NaN : Number(ltRaw)
-        if (Number.isFinite(lt) && lt > 0) {
-          const prev = state.planning.vendorLeadWeeks[vendor]
-          if (!prev) {
-            state.planning.vendorLeadWeeks[vendor] = lt
-          } else {
-            state.planning.vendorLeadWeeks[vendor] = (prev + lt) / 2
-          }
-        }
-      }
-    }
-
-    if (dateHeadersWithIso.length > 0) {
-      dateHeadersWithIso.forEach(h => {
-        const cell = row[h.field]
-        const txt = cell === null || cell === undefined ? "" : String(cell).trim()
-        if (txt === "") {
-          validation.missingStockCells += 1
-        } else {
-          const num = Number(txt)
-          if (!Number.isFinite(num) || num < 0) {
-            validation.invalidStockCells += 1
-          }
-        }
-      })
-    }
-
-    const description = descCol ? String(row[descCol] || "").trim() : ""
-    const history = []
-
-    for (let i = 1; i < dateHeadersSorted.length; i += 1) {
-      const prevHeader = dateHeadersSorted[i - 1]
-      const currHeader = dateHeadersSorted[i]
-      const prevIso = prevHeader.iso
-      const currIso = currHeader.iso
-      const prevRaw = row[prevHeader.field]
-      const currRaw = row[currHeader.field]
-      const prev = Number(prevRaw || 0)
-      const curr = Number(currRaw || 0)
-
-      if (Number.isFinite(prev) && Number.isFinite(curr) && curr > prev) {
-        validation.replenishmentEvents += 1
-      }
-
-      const movedRaw = prev - curr
-      const moved = movedRaw > 0 && Number.isFinite(movedRaw) ? movedRaw : 0
-      const wd = countWorkingDays(prevIso, currIso)
-      const rate = wd > 0 ? moved / wd : 0
-
-      history.push({
-        date: currIso,
-        qty: moved,
-        workingDays: wd,
-        ratePerWorkingDay: rate
-      })
-    }
-
-    const totalQty = history.reduce((s, p) => s + p.qty, 0)
-    const totalWorking = history.reduce((s, p) => s + p.workingDays, 0)
-    const periods = history.length
-    const positivePeriods = history.filter(p => p.qty > 0).length
-    const avgDemand = periods > 0 ? totalQty / periods : 0
-    const avgPerWorkingDay = totalWorking > 0 ? totalQty / totalWorking : 0
-
-    let classification = "Active"
-    if (totalQty === 0) classification = "Dead"
-    else if (positivePeriods <= 2) classification = "Low-Movement"
-
-    const ma = computeMA(history, 4, 3)
-    const mape = computeMape(history)
-    const { window30, window60, window90 } = computeWindows(history)
-
-    series.push({
-      sku,
-      description,
-      vendor,
-      history,
-      totalQty,
-      periods,
-      positivePeriods,
-      classification,
-      avgDemand,
-      mapePercent: mape,
-      forecast: classification === "Active" ? ma : [],
-      totalWorkingDays: totalWorking,
-      avgPerWorkingDay,
-      window30,
-      window60,
-      window90
-    })
-  })
-
-  validation.duplicateSkus = Array.from(duplicateSet).sort()
-  state.series = series
-  state.validation = validation
-
-  renderAnalystTable()
-  renderManagementTable()
-  renderValidation()
-  renderVendorLeadEditor()
-}
-
-function computeMA(hist, horizon, w) {
-  if (hist.length === 0) return []
-  const slice = hist.slice(-w)
-  const avg = slice.reduce((s, p) => s + p.qty, 0) / slice.length
-  const value = avg > 0 ? avg : 0
-  return Array(horizon).fill(value)
-}
-
-function computeMape(hist) {
-  if (hist.length < 3) return null
-  let sum = 0
+  let errors = 0
   let count = 0
-  for (let i = 1; i < hist.length; i += 1) {
-    const actual = hist[i].qty
-    const forecast = hist[i - 1].qty
-    if (actual > 0) {
-      sum += Math.abs(actual - forecast) / actual
-      count += 1
+  for (let i = 1; i < qty.length; i++) {
+    const start = Math.max(0, i - 3)
+    const prior = qty.slice(start, i)
+    const f = prior.reduce((a, b) => a + b, 0) / prior.length
+    const actual = qty[i]
+    if (actual !== 0) {
+      errors += Math.abs(actual - f) / Math.abs(actual)
+      count++
     }
   }
-  if (count === 0) return null
-  return (sum / count) * 100
+  const mape = count ? (errors / count) * 100 : null
+  return { forecast, mape }
 }
 
-function renderAnalystTable() {
+/* =========================
+   DECISION & RISK ENGINE
+========================= */
+
+function ewma(series, a = 0.4) {
+  let v = 0
+  series.forEach(x => v = a * x + (1 - a) * v)
+  return v
+}
+
+function croston(series) {
+  let z = 0, p = 0, q = 0, a = 0.4
+  series.forEach(x => {
+    if (x > 0) {
+      z = a * x + (1 - a) * z
+      p = a * q + (1 - a) * p
+      q = 1
+    } else {
+      q++
+    }
+  })
+  return p > 0 ? z / p : 0
+}
+
+function selectRate(rates) {
+  if (!rates.length) return { rate: 0, type: "none" }
+  const zeros = rates.filter(x => x === 0).length / rates.length
+  const mean = rates.reduce((a, b) => a + b, 0) / rates.length
+  const variance = rates.reduce((a, b) => a + (b - mean) ** 2, 0) / rates.length
+
+  if (zeros > 0.5) return { rate: croston(rates), type: "intermittent" }
+  if (variance / (mean || 1) > 1.5) return { rate: ewma(rates), type: "volatile" }
+  return { rate: ewma(rates), type: "stable" }
+}
+
+function demandAcceleration(s) {
+  const base = s.window90.adjusted
+  const recent = s.window30.adjusted
+  if (base === 0) return recent > 0 ? 1 : 0
+  return (recent - base) / base
+}
+
+function volatilityScore(rates) {
+  if (!rates.length) return 0
+  const mean = rates.reduce((a, b) => a + b, 0) / rates.length
+  if (mean === 0) return 0
+  const variance = rates.reduce((a, b) => a + (b - mean) ** 2, 0) / rates.length
+  return Math.sqrt(variance) / mean
+}
+
+function decisionMetrics(s) {
+  const daily = getAdjustedUsage(s)
+  const weekly = daily * 5
+  const lt = s.lead || state.planning.vendorLeadWeeks[s.vendor] || 2
+  const coverage = weekly > 0 ? s.totalQty / weekly : Infinity
+
+  const rates = s.history.slice(-12).map(h => h.ratePerWorkingDay || 0)
+  const sel = selectRate(rates)
+  const accel = demandAcceleration(s)
+  const vol = volatilityScore(rates)
+
+  const bayesWeight = 0.6
+  const baseRisk = weekly === 0 ? 0 : Math.max(0, Math.min(95, 40 + (lt - coverage) * 12 + vol * 20 - accel * 15))
+  const risk = Math.round(baseRisk * bayesWeight + (sel.type === "intermittent" ? 20 : 10) * (1 - bayesWeight))
+
+  const decision =
+    weekly === 0 ? "Do Not Stock" :
+    coverage < lt * 0.8 ? "Order Now" :
+    coverage < lt * 1.2 ? "Order Soon" :
+    "Watch"
+
+  const runoutMin = weekly > 0 ? Math.max(0, s.totalQty / (weekly * (1 + vol))) : Infinity
+  const runoutMax = weekly > 0 ? s.totalQty / (weekly * Math.max(0.5, 1 + accel)) : Infinity
+  const volatility = Math.min(100, Math.round(vol * 100))
+  const accelerationIndex = Math.round(accel * 100)
+
+  return {
+    decision,
+    coverage,
+    risk,
+    runout: { min: runoutMin, max: runoutMax },
+    accelerationIndex,
+    volatility
+  }
+}
+
+/* =========================
+   ABC GROUPING
+========================= */
+
+function computeABC(list) {
+  const total = list.reduce((a, b) => a + b.metric, 0) || 1
+  let run = 0
+  return list.map(x => {
+    run += x.metric
+    const c = run / total
+    return { ...x, abc: c <= 0.8 ? "A" : c <= 0.95 ? "B" : "C" }
+  })
+}
+
+/* =========================
+   VALIDATION PANEL
+========================= */
+
+function updateValidationPanel() {
+  const set = (id, val) => {
+    const el = document.getElementById(id)
+    if (el) el.textContent = val
+  }
+  set("val-missing", state.validation.missing)
+  set("val-nonchrono", state.validation.nonChrono ? "Yes" : "No")
+  set("val-invalid", state.validation.invalid)
+  set("val-replenish", state.validation.replenish)
+  set("val-duplicates", state.validation.duplicates || "None")
+
+  const badge = document.getElementById("validation-score")
+  if (badge) {
+    const issues = state.validation.missing + state.validation.invalid + state.validation.replenish + state.validation.duplicates
+    badge.textContent = issues === 0 && !state.validation.nonChrono ? "Data OK" : "Check data"
+    badge.className = `badge ${issues === 0 && !state.validation.nonChrono ? "badge-good" : "badge-warn"}`
+  }
+}
+
+/* =========================
+   RENDER — ANALYST
+========================= */
+
+function renderAnalyst() {
   const tbody = document.getElementById("summary-body")
   if (!tbody) return
   tbody.innerHTML = ""
   state.series.forEach(s => {
-    const tr = document.createElement("tr")
-    tr.onclick = () => renderDetail(s)
-    tr.innerHTML = `
-      <td>${s.sku}</td>
-      <td>${s.classification}</td>
-      <td>${s.periods}</td>
-      <td>${s.totalQty}</td>
-      <td>${s.avgDemand.toFixed(2)}</td>
-      <td>${s.mapePercent === null ? "—" : s.mapePercent.toFixed(1)}</td>
-      <td>${s.forecast.length > 0 ? "[" + s.forecast.map(v => v.toFixed(0)).join(", ") + "]" : "—"}</td>
-    `
-    tbody.appendChild(tr)
+    tbody.insertAdjacentHTML("beforeend", `
+      <tr>
+        <td>${s.sku}</td>
+        <td>${s.classification}</td>
+        <td>${s.history.length}</td>
+        <td>${s.totalQty}</td>
+        <td>${(s.totalQty / Math.max(1, s.history.length)).toFixed(2)}</td>
+        <td>${s.mape === null ? "N/A" : s.mape.toFixed(1)}</td>
+        <td>${s.forecast.toFixed(2)}</td>
+      </tr>
+    `)
   })
 }
 
-function renderManagementTable() {
+/* =========================
+   RENDER — MANAGEMENT
+========================= */
+
+function renderManagement() {
   const tbody = document.getElementById("mgmt-body")
   if (!tbody) return
   tbody.innerHTML = ""
-  state.series.forEach(s => {
-    const tr = document.createElement("tr")
-    tr.onclick = () => renderDetail(s)
-    const adj = getPlanningUsage(s)
-    const adjStr = adj > 0 ? adj.toFixed(2) : "0.00"
-    const w30 = s.window30.adjusted.toFixed(2)
-    const w60 = s.window60.adjusted.toFixed(2)
-    const w90 = s.window90.adjusted.toFixed(2)
-    tr.innerHTML = `
-      <td>${s.sku}</td>
-      <td>${patternLabel(s)}</td>
-      <td>${adjStr} (based on ${state.planning.window}d)</td>
-      <td>30d: ${w30} · 60d: ${w60} · 90d: ${w90}</td>
-      <td>${recommendation(s)}</td>
-    `
-    tbody.appendChild(tr)
-  })
-}
 
-function renderDetail(s) {
-  const box = document.getElementById("detail-content")
-  if (!box) return
-
-  if (state.mode === "analyst") {
-    const lines = []
-    lines.push(`<div class="section"><h4>${s.sku}</h4>${s.description || ""}</div>`)
-    lines.push(`
-      <div class="section">
-        <strong>Summary</strong><br>
-        Periods: ${s.periods}<br>
-        Total Qty (raw): ${s.totalQty}<br>
-        Total working days: ${s.totalWorkingDays}<br>
-        Avg per period: ${s.avgDemand.toFixed(2)}<br>
-        Avg per working day: ${s.avgPerWorkingDay.toFixed(4)}
-      </div>
-    `)
-    lines.push(`
-      <div class="section">
-        <strong>Rolling usage (raw vs working-day adjusted)</strong><br>
-        30 days: ${s.window30.raw} raw over ${s.window30.workingDays} working days
-        ⇒ ${s.window30.adjusted.toFixed(4)} / working day<br>
-        60 days: ${s.window60.raw} raw over ${s.window60.workingDays} working days
-        ⇒ ${s.window60.adjusted.toFixed(4)} / working day<br>
-        90 days: ${s.window90.raw} raw over ${s.window90.workingDays} working days
-        ⇒ ${s.window90.adjusted.toFixed(4)} / working day
-      </div>
-    `)
-    lines.push(`
-      <div class="section">
-        <strong>Forecast (3-point moving average)</strong><br>
-        ${s.forecast.length > 0 ? s.forecast.map(v => v.toFixed(0)).join(", ") : "—"}
-      </div>
-    `)
-    const historyLines = s.history.map(p => {
-      const rate = p.workingDays > 0 ? p.ratePerWorkingDay.toFixed(4) : "0.0000"
-      return `${p.date}: ${p.qty} (working days: ${p.workingDays}, per day: ${rate})`
+    let list = state.series
+    .filter(s => {
+      const hasVendor = Boolean(s.vendor)
+      if (state.vendors.length <= 1) return true
+      // Keep untagged SKUs visible; otherwise require selection
+      if (!hasVendor) return true
+      return state.vendorFilter.has(s.vendor)
     })
-    lines.push(`
-      <div class="section">
-        <strong>History</strong><br>
-        ${historyLines.join("<br>")}
-      </div>
-    `)
-    box.innerHTML = lines.join("")
-  } else if (state.mode === "management") {
-    const lines = []
-    const vendor = s.vendor || "Not in file"
-    const adj = getPlanningUsage(s)
-    const lt =
-      s.vendor && state.planning.vendorLeadWeeks[s.vendor]
-        ? state.planning.vendorLeadWeeks[s.vendor]
-        : 0
-    const ltText = lt > 0 ? `${lt} weeks (vendor-specific)` : "default 2 weeks (no vendor LT set)"
+    .map(s => ({
+      s,
+      metric: getAdjustedUsage(s)
+    }))
+    .sort((a, b) => b.metric - a.metric)
 
-    lines.push(`<div class="section"><h4>${s.sku}</h4>${s.description || ""}</div>`)
-    lines.push(`
-      <div class="section">
-        <strong>Usage pattern:</strong> ${patternLabel(s)} (${usageLabel(s.classification)})<br>
-        <strong>Adj usage per working day (${state.planning.window}d window):</strong> ${adj.toFixed(4)}
-      </div>
-    `)
-    lines.push(`
-      <div class="section">
-        <strong>Vendor & lead time</strong><br>
-        Vendor: ${vendor}<br>
-        Planning lead time: ${ltText}
-      </div>
-    `)
-    lines.push(`
-      <div class="section">
-        <strong>Rolling windows (adjusted)</strong><br>
-        30 days: ${s.window30.adjusted.toFixed(4)} / working day<br>
-        60 days: ${s.window60.adjusted.toFixed(4)} / working day<br>
-        90 days: ${s.window90.adjusted.toFixed(4)} / working day<br>
-        <em>Current planning window: ${state.planning.window} days</em>
-      </div>
-    `)
-    lines.push(`
-      <div class="section">
-        <strong>Recommendation</strong><br>
-        ${recommendation(s)}
-      </div>
-    `)
-    lines.push(`
-      <div class="section">
-        <strong>Recent usage (last 8 points)</strong><br>
-        ${s.history.slice(-8).map(p => `${p.date}: ${p.qty}`).join("<br>")}
-      </div>
-    `)
-    box.innerHTML = lines.join("")
-  } else {
-    box.innerHTML =
-      "About mode is active. Switch back to Analyst or Management to see SKU details."
-  }
-}
 
-function renderValidation() {
-  const scoreEl = document.getElementById("validation-score")
-  const missingEl = document.getElementById("val-missing")
-  const nonChronoEl = document.getElementById("val-nonchrono")
-  const invalidEl = document.getElementById("val-invalid")
-  const replEl = document.getElementById("val-replenish")
-  const dupEl = document.getElementById("val-duplicates")
-  if (!scoreEl || !missingEl || !nonChronoEl || !invalidEl || !replEl || !dupEl) return
-
-  const v = state.validation
-  if (!v) {
-    scoreEl.textContent = "Waiting for data"
-    scoreEl.className = "badge badge-good"
-    missingEl.textContent = "0"
-    nonChronoEl.textContent = "No"
-    invalidEl.textContent = "0"
-    replEl.textContent = "0"
-    dupEl.textContent = "None"
-    return
+  list = computeABC(list)
+  if (state.expandedSku && !list.some(x => x.s.sku === state.expandedSku)) {
+    state.expandedSku = null
   }
 
-  const issues =
-    v.missingStockCells > 0 ||
-    v.nonChronological ||
-    v.invalidStockCells > 0 ||
-    v.replenishmentEvents > 0 ||
-    v.duplicateSkus.length > 0
+  let currentGroup = ""
+  list.forEach(({ s, metric, abc }) => {
+    if (abc !== currentGroup) {
+      currentGroup = abc
+      tbody.insertAdjacentHTML("beforeend", `
+        <tr class="sep"><td colspan="4">${abc} items</td></tr>
+      `)
+    }
 
-  scoreEl.textContent = issues ? "Needs Attention" : "Good"
-  scoreEl.className = issues ? "badge badge-warn" : "badge badge-good"
-  missingEl.textContent = String(v.missingStockCells)
-  nonChronoEl.textContent = v.nonChronological ? "Yes" : "No"
-  invalidEl.textContent = String(v.invalidStockCells)
-  replEl.textContent = String(v.replenishmentEvents)
-  dupEl.textContent = v.duplicateSkus.length > 0 ? v.duplicateSkus.join(", ") : "None"
-}
+    const d = decisionMetrics(s)
 
-// planning window buttons
-function setPlanningWindow(days) {
-  state.planning.window = days
-  updatePlanningWindowUi()
-  if (state.mode === "management") {
-    renderManagementTable()
-    const detailContent = document.getElementById("detail-content")
-    if (detailContent) detailContent.innerHTML = "Click a SKU."
-  }
-}
+    tbody.insertAdjacentHTML("beforeend", `
+      <tr class="data" data-sku="${s.sku}">
+        <td>
+          <span class="badge badge-${abc.toLowerCase()}">${abc}</span>
+          ${s.sku}
+          <div class="badge ${d.decision === "Order Now" ? "badge-warn" : "badge-good"}">${d.decision}</div>
+        </td>
+        <td>${patternLabel(s)}</td>
+        <td>${metric.toFixed(4)}</td>
+        <td>${recommendationText(s)}</td>
+      </tr>
+    `)
 
-function updatePlanningWindowUi() {
-  const btn30 = document.getElementById("btn-win-30")
-  const btn60 = document.getElementById("btn-win-60")
-  const btn90 = document.getElementById("btn-win-90")
-  const w = state.planning.window
-  if (btn30) btn30.classList.toggle("active", w === 30)
-  if (btn60) btn60.classList.toggle("active", w === 60)
-  if (btn90) btn90.classList.toggle("active", w === 90)
-}
-
-// vendor lead-time editor (right side of planning controls)
-function renderVendorLeadEditor() {
-  const container = document.getElementById("vendor-lead-editor")
-  if (!container) return
-
-  const planning = state.planning
-
-  if (!planning.hasVendorColumn) {
-    container.innerHTML =
-      '<div class="muted">No vendor column detected. Recommendations use default 2-week cover.</div>'
-    return
-  }
-
-  if (planning.hasLeadColumn) {
-    container.innerHTML =
-      '<div class="muted">Lead time (weeks) read from file. Edit the CSV to change it.</div>'
-    return
-  }
-
-  const vendors = Object.keys(planning.vendorLeadWeeks).sort()
-  if (vendors.length === 0) {
-    container.innerHTML =
-      '<div class="muted">Vendors will appear here once the CSV is parsed.</div>'
-    return
-  }
-
-  let html = '<div class="vendor-lead-editor-title">Vendor lead time (weeks)</div>'
-  vendors.forEach(v => {
-    const safeId = "lead-" + v.replace(/[^a-zA-Z0-9_-]/g, "_")
-    const value = planning.vendorLeadWeeks[v] || ""
-    html += `
-      <div class="vendor-lead-row">
-        <span>${v}</span>
-        <input type="number" min="0" step="0.5" id="${safeId}" value="${value === 0 ? "" : value}">
-      </div>
-    `
+    if (state.expandedSku === s.sku) renderInlineDetail(s)
   })
-  container.innerHTML = html
 
-  vendors.forEach(v => {
-    const safeId = "lead-" + v.replace(/[^a-zA-Z0-9_-]/g, "_")
-    const input = document.getElementById(safeId)
-    if (!input) return
-    input.addEventListener("change", () => {
-      const val = Number(input.value)
-      planning.vendorLeadWeeks[v] = Number.isFinite(val) && val > 0 ? val : 0
-      if (state.mode === "management") {
-        renderManagementTable()
-      }
-    })
-  })
+  tbody.onclick = e => {
+    const row = e.target.closest("tr.data")
+    if (!row) return
+    const sku = row.dataset.sku
+    state.expandedSku = state.expandedSku === sku ? null : sku
+    renderManagement()
+  }
 }
+
+function renderInlineDetail(s) {
+  const tbody = document.getElementById("mgmt-body")
+  const rows = [...tbody.querySelectorAll("tr.data")]
+  const anchor = rows.find(r => r.dataset.sku === s.sku)
+  if (!anchor) return
+
+  const d = decisionMetrics(s)
+  const formatRunout = r => (!isFinite(r.min) || !isFinite(r.max)) ? "N/A" : `${r.min.toFixed(1)} - ${r.max.toFixed(1)} wks`
+
+  anchor.insertAdjacentHTML("afterend", `
+    <tr class="inline-detail">
+      <td colspan="4">
+        <strong>${s.sku}</strong> — ${s.description || ""}<br>
+        Vendor: ${s.vendor || "Unspecified"}<br>
+        Historical window: ${state.planning.allHistory ? "All" : `Last ${state.planning.windowDays} days`}<br>
+        Adj usage / wd: ${getAdjustedUsage(s).toFixed(4)}<br>
+        Coverage vs LT: ${d.coverage === Infinity ? "N/A" : d.coverage.toFixed(1)} weeks<br>
+        Runout window: ${formatRunout(d.runout)}<br>
+        Stockout risk: ${d.risk}%<br>
+        Acceleration index: ${d.accelerationIndex}%<br>
+        Volatility score: ${d.volatility}<br>
+        Decision: <strong>${d.decision}</strong>
+      </td>
+    </tr>
+  `)
+}
+
+/* =========================
+   VENDOR FILTER UI
+========================= */
+
+function updateVendorFilterUI() {
+  const wrap = document.getElementById("vendor-filter")
+  const select = document.getElementById("vendor-filter-select")
+  if (!wrap || !select) return
+
+  if (state.vendors.length <= 1) {
+    wrap.classList.add("hidden")
+    state.vendorFilter = new Set(state.vendors)
+    return
+  }
+
+  wrap.classList.remove("hidden")
+  select.innerHTML = ""
+  state.vendors.forEach(v => {
+    const opt = document.createElement("option")
+    opt.value = v
+    opt.textContent = v
+    opt.selected = true
+    select.appendChild(opt)
+  })
+  state.vendorFilter = new Set(state.vendors)
+
+  select.onchange = () => {
+    const chosen = new Set([...select.options].filter(o => o.selected).map(o => o.value))
+    state.vendorFilter = chosen.size ? chosen : new Set(state.vendors)
+    renderManagement()
+  }
+}
+
+/* =========================
+   RENDER DISPATCH
+========================= */
+
+function renderAll() {
+  renderAnalyst()
+  renderManagement()
+}
+
+/* =========================
+   EVENTS & MODE
+========================= */
 
 function setMode(mode) {
   state.mode = mode
-  const btnAnalyst = document.getElementById("btn-analyst")
-  const btnMgmt = document.getElementById("btn-management")
-  const btnAbout = document.getElementById("btn-about")
-  const analystPanel = document.getElementById("analyst-table")
-  const mgmtPanel = document.getElementById("management-table")
-  const detailView = document.getElementById("detail-view")
-  const aboutPage = document.getElementById("about-page")
-  const fileArea = document.getElementById("file-area")
-  const validationPanel = document.getElementById("validation-panel")
-  const detailContent = document.getElementById("detail-content")
-
-  if (btnAnalyst) btnAnalyst.classList.toggle("active", mode === "analyst")
-  if (btnMgmt) btnMgmt.classList.toggle("active", mode === "management")
-  if (btnAbout) btnAbout.classList.toggle("active", mode === "about")
-
-  if (mode === "about") {
-    if (fileArea) fileArea.classList.add("hidden")
-    if (analystPanel) analystPanel.classList.add("hidden")
-    if (mgmtPanel) mgmtPanel.classList.add("hidden")
-    if (validationPanel) validationPanel.classList.add("hidden")
-    if (detailView) detailView.classList.add("hidden")
-    if (aboutPage) aboutPage.classList.remove("hidden")
-  } else if (mode === "analyst") {
-    if (fileArea) fileArea.classList.remove("hidden")
-    if (analystPanel) analystPanel.classList.remove("hidden")
-    if (mgmtPanel) mgmtPanel.classList.add("hidden")
-    if (validationPanel) validationPanel.classList.remove("hidden")
-    if (detailView) detailView.classList.remove("hidden")
-    if (aboutPage) aboutPage.classList.add("hidden")
-    renderAnalystTable()
-    renderValidation()
-    if (detailContent) detailContent.innerHTML = "Click a SKU."
-  } else {
-    if (fileArea) fileArea.classList.remove("hidden")
-    if (analystPanel) analystPanel.classList.add("hidden")
-    if (mgmtPanel) mgmtPanel.classList.remove("hidden")
-    if (validationPanel) validationPanel.classList.add("hidden")
-    if (detailView) detailView.classList.remove("hidden")
-    if (aboutPage) aboutPage.classList.add("hidden")
-    renderManagementTable()
-    if (detailContent) detailContent.innerHTML = "Click a SKU."
-  }
+  const analyst = document.getElementById("analyst-table")
+  const mgmt = document.getElementById("management-layout")
+  const about = document.getElementById("about-page")
+  if (analyst) analyst.classList.toggle("hidden", mode !== "analyst")
+  if (mgmt) mgmt.classList.toggle("hidden", mode !== "management")
+  if (about) about.classList.toggle("hidden", mode !== "about")
+  document.querySelectorAll(".toggle-button").forEach(btn => {
+    btn.classList.toggle("active", btn.id === `btn-${mode}`)
+  })
 }
 
 document.addEventListener("DOMContentLoaded", () => {
   const btnAnalyst = document.getElementById("btn-analyst")
-  const btnMgmt = document.getElementById("btn-management")
+  const btnManagement = document.getElementById("btn-management")
   const btnAbout = document.getElementById("btn-about")
-  const fileInput = document.getElementById("file-input")
-  const btnWin30 = document.getElementById("btn-win-30")
-  const btnWin60 = document.getElementById("btn-win-60")
-  const btnWin90 = document.getElementById("btn-win-90")
-
   if (btnAnalyst) btnAnalyst.onclick = () => setMode("analyst")
-  if (btnMgmt) btnMgmt.onclick = () => setMode("management")
+  if (btnManagement) btnManagement.onclick = () => setMode("management")
   if (btnAbout) btnAbout.onclick = () => setMode("about")
 
-  if (btnWin30) btnWin30.onclick = () => setPlanningWindow(30)
-  if (btnWin60) btnWin60.onclick = () => setPlanningWindow(60)
-  if (btnWin90) btnWin90.onclick = () => setPlanningWindow(90)
+  const slider = document.getElementById("hist-slider")
+  if (slider) {
+    slider.oninput = e => {
+      state.planning.windowDays = Number(e.target.value)
+      state.planning.allHistory = false
+      const label = document.getElementById("hist-label")
+      if (label) label.textContent = `Last ${state.planning.windowDays} days`
+      const allChk = document.getElementById("hist-all")
+      if (allChk) allChk.checked = false
+      renderManagement()
+    }
+  }
 
+  const allToggle = document.getElementById("hist-all")
+  if (allToggle) {
+    allToggle.onchange = e => {
+      state.planning.allHistory = e.target.checked
+      const label = document.getElementById("hist-label")
+      if (label) label.textContent = e.target.checked ? "All history" : `Last ${state.planning.windowDays} days`
+      renderManagement()
+    }
+  }
+
+  const fileInput = document.getElementById("file-input")
   if (fileInput) {
     fileInput.addEventListener("change", e => {
-      const target = e.target
-      const file = target.files && target.files[0]
-      if (!file) return
-      const reader = new FileReader()
-      reader.onload = () => {
-        parseCsv(String(reader.result))
-        setMode(state.mode)
-      }
-      reader.readAsText(file)
+      const f = e.target.files?.[0]
+      if (!f) return
+      const r = new FileReader()
+      r.onload = () => parseCsv(String(r.result))
+      r.readAsText(f)
     })
   }
 
-  updatePlanningWindowUi()
-  renderVendorLeadEditor()
+  const label = document.getElementById("hist-label")
+  if (label) label.textContent = "Last 90 days"
+
   setMode("analyst")
 })
+/* ========================================================= */
+/*   END OF UNIVERSAL DEMAND FORECASTING SPA — MAIN.JS
+   ========================================================= */
