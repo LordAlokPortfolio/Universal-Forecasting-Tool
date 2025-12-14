@@ -523,6 +523,7 @@ function deriveMaterialPerDE(cycleCounts, purchaseHistory) {
 
 // ---- Planning engine ----
 
+
 function runMaterialPlanning() {
   const doorsPerDay = Number(document.getElementById("doorsPerDay")?.value || 0)
   const workingDays = Number(document.getElementById("workingDays")?.value || 0)
@@ -541,17 +542,7 @@ function runMaterialPlanning() {
       </td>
     </tr>
   \
-}</td>
-      <td>${materialRates[mat].unit}</td>
-      <td>${expected.toFixed(0)}</td>
-      <td>${low.toFixed(0)}</td>
-      <td>${high.toFixed(0)}</td>
-    `
-    tbody.appendChild(tr)
-  }
 }
 
-// ---- Bind ----
 document.getElementById("runPlanning")
   ?.addEventListener("click", runMaterialPlanning)
-

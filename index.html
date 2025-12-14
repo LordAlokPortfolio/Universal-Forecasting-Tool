@@ -108,71 +108,7 @@ input[type=file]{background:#020617;color:#e5e7eb;border:1px solid #1f2937;paddi
       </label>
 
       <button id="runPlanning">Calculate Material Plan</button>
-    </div>
-
-    <table id="materialPlan">
-      <thead>
-        <tr>
-          <th>Material</th>
-          <th>Unit</th>
-          <th>Expected</th>
-          <th>Low</th>
-          <th>High</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
-  </section>
-</div>
-  <h2>Production Planning (BOM-less)</h2>
-    </section>
-</div>
-  <div class="planning-inputs">
-    <label>
-      Doors per day
-      <input type="number" id="doorsPerDay" value="45" min="1" />
-    </label>
-
-    <label>
-      Working days per year
-      <input type="number" id="workingDays" value="250" min="1" />
-    </label>
-
-    <button id="runPlanning">Calculate Material Plan</button>
-  </div>
-
-  <table id="materialPlan">
-    <thead>
-      <tr>
-        <th>Material</th>
-        <th>Unit</th>
-        <th>Expected</th>
-        <th>Low</th>
-        <th>High</th>
-      </tr>
-    </thead>
-    <tbody></tbody>
-  </table>
-</section>
-<style>
-  .planning-inputs {
-    display: flex;
-    gap: 1rem;
-    align-items: flex-end;
-    margin-bottom: 1rem;
-  }
-  #materialPlan th, #materialPlan td {
-    padding: 6px 10px;
-    text-align: right;
-  }
-  #materialPlan th:first-child,
-  #materialPlan td:first-child {
-    text-align: left;
-  }
-</style>
-
-
-<!-- MANAGEMENT -->
+    </div>`n`n<!-- MANAGEMENT -->
 <div id="management-view" class="hidden">
   <div class="snap-container" id="rolodex"></div>
 </div>
@@ -247,4 +183,5 @@ document.getElementById("btn-win-90").onclick=()=>setPlanningWindow(90)
 
 </body>
 </html>
+
 
