@@ -424,12 +424,17 @@ function setMode(m){
 
   if (m === "about") {
     renderAbout()
-    return
   }
 
   if (m === "analyst") renderAnalyst()
   if (m === "management") renderManagement()
-  renderValidation()
+
+  document.getElementById("validation-view")
+    ?.classList.toggle("hidden", m === "about" || m === "planning")
+
+  if (m !== "about" && m !== "planning") {
+    renderValidation()
+  }
 }
 
 
