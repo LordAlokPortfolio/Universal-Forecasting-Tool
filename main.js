@@ -1,4 +1,9 @@
 "use strict"
+function renderAbout(){
+  const el = document.getElementById("about-view")
+  if (!el) return
+  el.innerHTML = ABOUT_TEXT
+}
 
 /* =========================
    CONSTANTS
@@ -322,23 +327,43 @@ function renderAll(){
    ========================= */
 
 function setMode(m){
-  state.mode=m
-  ["analyst","management","about"].forEach(v=>{
-    document.getElementById(v+"-view")?.classList.toggle("hidden",v!==m)
-    document.getElementById("btn-"+v)?.classList.toggle("active",v===m)
+  state.mode = m
+
+  const views = ["analyst","management","about"]
+  views.forEach(v=>{
+    document.getElementById(v+"-view")?.classList.toggle("hidden", v!==m)
+    document.getElementById("btn-"+v)?.classList.toggle("active", v===m)
   })
-  renderAll()
+
+  if (m === "about") {
+    renderAbout()
+    return
+  }
+
+  if (m === "analyst") renderAnalyst()
+  if (m === "management") renderManagement()
+  renderValidation()
 }
+
 
 /* =========================
    INIT
    ========================= */
 
 document.addEventListener("DOMContentLoaded",()=>{
-  document.getElementById("cycle-file").onchange=e=>loadCsv(e.target.files[0],parseDemand)
-  document.getElementById("po-file").onchange=e=>loadCsv(e.target.files[0],parseSupply)
-  document.getElementById("btn-analyst").onclick=()=>setMode("analyst")
-  document.getElementById("btn-management").onclick=()=>setMode("management")
-  document.getElementById("btn-about").onclick=()=>setMode("about")
-  setMode("analyst")
+  document.getElementById("cycle-file")?.addEventListener("change",e=>{
+    loadCsv(e.target.files[0], parseDemand)
+  })
+
+  document.getElementById("po-file")?.addEventListener("change",e=>{
+    loadCsv(e.target.files[0], parseSupply)
+  })
+
+  document.getElementById("btn-analyst")?.addEventListener("click",()=>setMode("analyst"))
+  document.getElementById("btn-management")?.addEventListener("click",()=>setMode("management"))
+  document.getElementById("btn-about")?.addEventListener("click",()=>setMode("about"))
+
+  renderAbout()        // 👈 KEY FIX
+  setMode("analyst")   // default view
 })
+
