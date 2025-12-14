@@ -100,35 +100,59 @@ input[type=file]{background:#020617;color:#e5e7eb;border:1px solid #1f2937;paddi
 <!-- VALIDATION -->
 <div id="validation-summary" class="validation muted"></div>
 
-<!-- ABOUT -->
+<!-- ABOUT (REPLACE ENTIRE about-view BLOCK IN index.html) -->
 <div id="about-view" class="hidden about">
-  <h2>Universal Forecasting Tool — Version 2</h2>
-
-  <h3>What problem this solves</h3>
+  <h2>About This Tool</h2>
   <p>
-    Most inventory tools mix demand and supply. This tool keeps them separate
-    so decisions are based on real consumption, not receipts.
+    Universal Forecasting Tool is a client-only demand planning application designed
+    to demonstrate real-world demand planner thinking using consumption-based data.
   </p>
 
-  <h3>What data is used</h3>
+  <h3>Why it was built</h3>
+  <p>
+    Most inventory tools mix demand and supply and hide assumptions.
+    This tool was built to clearly separate consumption-based demand from supply visibility,
+    mirroring how demand planners actually work in manufacturing environments.
+  </p>
+
+  <h3>How it works</h3>
   <ul>
-    <li>Cycle counts to calculate demand</li>
-    <li>Purchase history to understand supply and lead time</li>
+    <li>Upload historical cycle counts (required)</li>
+    <li>Optionally upload purchase history for supplier and lead-time visibility</li>
+    <li>All calculations run entirely in the browser</li>
   </ul>
 
-  <h3>Planning horizon</h3>
+  <h3>Privacy statement</h3>
   <p>
-    Internally the model plans in working days and weeks for accuracy.
-    Externally it presents a <strong>0–24 month horizon</strong>,
-    which is how planners communicate with management.
+    No data is stored, transmitted, or logged.
+    All files remain local to your browser session and are discarded on refresh.
   </p>
 
+  <h3>Demand forecasting method</h3>
+  <p>
+    Demand is calculated strictly from stock reductions between cycle counts.
+    Usage is normalized by working days (weekends and statutory holidays excluded)
+    and evaluated using rolling 30 / 60 / 90-day windows.
+  </p>
+
+  <h3>Management mode vs Analyst mode</h3>
+  <ul>
+    <li><strong>Analyst mode</strong> exposes detailed metrics and adjusted usage calculations</li>
+    <li><strong>Management mode</strong> presents decision-focused SKU cards and recommendations</li>
+  </ul>
+
+  <h3>Developer credits</h3>
+  <p>
+    Designed and built by Alok Kulkarni as a career-grade demand planning portfolio project.
+  </p>
+
+  <h3>Version info</h3>
   <p class="muted">
-    Version 2 extends Version 1 without removing any demand logic.
+    Universal Forecasting Tool — Version 2.0<br>
+    Client-only • Consumption-based demand • 0–24 month planning horizon
   </p>
 </div>
 
-</div>
 
 <script src="main.js"></script>
 
