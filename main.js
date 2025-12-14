@@ -557,9 +557,15 @@ function setMode(mode) {
    ========================= */
 
 document.addEventListener("DOMContentLoaded",()=>{
-  document.getElementById("btn-analyst")?.onclick=()=>setMode("analyst")
-  document.getElementById("btn-management")?.onclick=()=>setMode("management")
-  document.getElementById("btn-about")?.onclick=()=>setMode("about")
+  const btnAnalyst = document.getElementById("btn-analyst")
+  if (btnAnalyst) btnAnalyst.onclick = () => setMode("analyst")
+
+  const btnManagement = document.getElementById("btn-management")
+  if (btnManagement) btnManagement.onclick = () => setMode("management")
+
+  const btnAbout = document.getElementById("btn-about")
+  if (btnAbout) btnAbout.onclick = () => setMode("about")
+
 
   document.getElementById("file-input")?.addEventListener("change",e=>{
     const f = e.target.files?.[0]
