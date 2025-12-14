@@ -4,6 +4,19 @@ function renderAbout(){
   if (!el) return
   el.innerHTML = ABOUT_TEXT
 }
+function daysBetween(a, b){
+  const d1 = new Date(a)
+  const d2 = new Date(b)
+  if (isNaN(d1) || isNaN(d2)) return null
+  return Math.round((d2 - d1) / 86400000)
+}
+
+function median(arr){
+  if (!arr || arr.length === 0) return 0
+  const s = [...arr].sort((a,b)=>a-b)
+  const m = Math.floor(s.length / 2)
+  return s.length % 2 ? s[m] : (s[m-1] + s[m]) / 2
+}
 
 /* =========================
    CONSTANTS
@@ -136,7 +149,7 @@ function recommendation(s){
 
   const weeklyNeed=adj*5
   const vendor=s.vendor||""
-  let leadWeeks=vendor?(state.leadTimes[vendor]||0):0
+  let leadWeeks = vendor ? median(state.leadTimes[vendor]) : 0
   if(!leadWeeks||leadWeeks<=0)leadWeeks=2
 
   const buffer=Math.max(Math.round(weeklyNeed*leadWeeks),1)
@@ -244,22 +257,35 @@ function parseDemand(rows){
 
 function parseSupply(rows){
   rows.forEach(r=>{
-    const sku=r.SKU||r.sku
-    if(!sku)return
-    const vendor=r.Vendor||r.vendor||"Vendor not provided"
-    const receipt=r.ReceiptDate||r.receipt||""
-    if(!state.supply[sku])state.supply[sku]=[]
-    state.supply[sku].push({vendor,receipt})
-    if(r.LeadWeeks){
-      const lw=Number(r.LeadWeeks)
-      if(lw>0)state.leadTimes[vendor]=lw
+    const sku = r["Inventory ID"] || r["INVENTORY ID"] || r["InventoryId"] || r["InventoryID"]
+    if (!sku) return
+
+    const vendor = String(r["Vendor"] || "").trim() || "Vendor not provided"
+    const poDate = r["PO Date"]
+    const recvDate = r["PO ReceiveDate"]
+
+    const leadDays = daysBetween(poDate, recvDate)
+    if (leadDays === null || leadDays < 0) return
+
+    const leadWeeks = leadDays / 7
+
+    if (!state.supply[sku]) state.supply[sku] = []
+    state.supply[sku].push({ vendor, poDate, recvDate, leadWeeks })
+
+    if (!state.leadTimes[vendor]) state.leadTimes[vendor] = []
+    state.leadTimes[vendor].push(leadWeeks)
+  })
+
+  // backfill vendor into demand if missing
+  state.demand.forEach(s=>{
+    if (!s.vendor && state.supply[s.sku]?.length) {
+      s.vendor = state.supply[s.sku][0].vendor
     }
   })
-  state.demand.forEach(s=>{
-    if(!s.vendor&&state.supply[s.sku])s.vendor=state.supply[s.sku][0].vendor
-  })
-  renderAll()
+
+  if (state.mode === "management") renderManagement()
 }
+
 
 /* =========================
    UI RENDER
@@ -283,31 +309,67 @@ function renderAnalyst(){
 }
 
 function renderManagement(){
-  const r=document.getElementById("rolodex")
-  if(!r)return
-  r.innerHTML=""
-  state.demand.sort((a,b)=>a.class.localeCompare(b.class))
-  state.demand.forEach(s=>{
-    const vendor=s.vendor||"Vendor not provided"
-    const lt=state.leadTimes[vendor]||"?"
-    r.innerHTML+=`
-      <div class="card card-${s.class}">
-        <div class="card-title">${s.sku}</div>
-        <div class="card-desc">${s.desc}</div>
-        <div class="card-body">
-          <div>${patternLabel(s)}</div>
-          <div class="muted">Adj usage (${state.planning.window}d): ${getPlanningUsage(s).toFixed(4)}</div>
-          <br>
-          Vendor <input class="inline-edit" value="${vendor}"
-            onchange="state.leadTimes[this.value]=state.leadTimes['${vendor}']||0; state.demand.find(d=>d.sku==='${s.sku}').vendor=this.value">
-          <br>
-          Lead weeks <input class="inline-edit" value="${lt}"
-            onchange="state.leadTimes['${vendor}']=Number(this.value)">
+  const r = document.getElementById("rolodex")
+  if (!r) return
+  r.innerHTML = ""
+
+  state.demand
+    .sort((a,b)=>a.class.localeCompare(b.class))
+    .forEach(s=>{
+      const vendor = s.vendor || "Vendor not provided"
+      const trueLead = state.leadTimes[vendor]
+        ? median(state.leadTimes[vendor])
+        : 0
+
+      const lt = trueLead ? trueLead.toFixed(2) : ""
+      const variance = lt ? (Number(lt) - trueLead).toFixed(2) : "—"
+
+      r.innerHTML += `
+        <div class="card card-${s.class}">
+          <div class="card-title">${s.sku}</div>
+          <div class="card-desc">${s.desc}</div>
+
+          <div class="card-body">
+            <div>${patternLabel(s)}</div>
+            <div class="muted">
+              Adj usage (${state.planning.window}d):
+              ${getPlanningUsage(s).toFixed(4)} / working day
+            </div>
+
+            <br>
+            Vendor:
+            <input class="inline-edit" value="${vendor}"
+              onchange="
+                state.demand.find(d=>d.sku==='${s.sku}').vendor=this.value;
+                if(!state.leadTimes[this.value]) state.leadTimes[this.value]=[];
+                renderManagement();
+              ">
+
+            <br>
+            Lead time (weeks):
+            <input class="inline-edit" value="${lt}"
+              onchange="
+                state.leadTimes['${vendor}']=[Number(this.value)];
+                renderManagement();
+              ">
+
+            <br><br>
+            <span class="muted">
+              True lead time: ${trueLead.toFixed(2)} weeks<br>
+              Variance (entered − actual): ${variance} weeks
+            </span>
+          </div>
+
+          <div class="card-footer">
+            ${recommendation(s)}
+          </div>
         </div>
-        <div class="card-footer">${recommendation(s)}</div>
-      </div>`
-  })
+      `
+    })
 }
+
+
+  
 
 function renderValidation(){
   const v=state.validation
