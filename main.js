@@ -402,11 +402,32 @@ function renderManagement(){
 }
 
 function renderValidation(){
-  const v=state.validation
-  const el=document.getElementById("validation-summary")
-  if(!el||!v)return
-  el.textContent=`Validation — missing:${v.missingStockCells}, invalid:${v.invalidStockCells}, replenishments:${v.replenishmentEvents}, duplicates:${v.duplicateSkus.join(",")||"none"}`
+  const v = state.validation
+  const el = document.getElementById("validation-summary")
+  if (!el || !v) return
+
+  const issues = []
+
+  if (v.missingStockCells > 0) {
+    issues.push(`${v.missingStockCells} missing values`)
+  }
+  if (v.invalidStockCells > 0) {
+    issues.push(`${v.invalidStockCells} invalid entries`)
+  }
+  if (v.duplicateSkus.length > 0) {
+    issues.push(`duplicate SKUs`)
+  }
+
+  if (issues.length === 0) {
+    el.textContent =
+      `Data check: OK — no missing values, no errors, ` +
+      `replenishment history detected (${v.replenishmentEvents} events)`
+  } else {
+    el.textContent =
+      `Data check: Attention needed — ` + issues.join(", ")
+  }
 }
+
 
 
 /* =========================
