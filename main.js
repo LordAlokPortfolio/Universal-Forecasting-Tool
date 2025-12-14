@@ -337,7 +337,7 @@ function renderManagement(){
         ? median(state.leadTimes[vendor])
         : 0
 
-      const monthsCover = trueLead ? (trueLead / 4.33).toFixed(1) : "â€”"
+      const monthsCover = trueLead ? (trueLead / 4.33).toFixed(1) : "—"
 
       const nextReceipt = state.supply[s.sku]?.[0]?.recvDate || "None"
 
@@ -405,7 +405,7 @@ function renderValidation(){
   const v=state.validation
   const el=document.getElementById("validation-summary")
   if(!el||!v)return
-  el.textContent=`Validation â€” missing:${v.missingStockCells}, invalid:${v.invalidStockCells}, replenishments:${v.replenishmentEvents}, duplicates:${v.duplicateSkus.join(",")||"none"}`
+  el.textContent=`Validation — missing:${v.missingStockCells}, invalid:${v.invalidStockCells}, replenishments:${v.replenishmentEvents}, duplicates:${v.duplicateSkus.join(",")||"none"}`
 }
 
 
@@ -535,14 +535,15 @@ function runMaterialPlanning() {
   const tbody = document.querySelector("#materialPlan tbody")
   if (!tbody) return
 
-  tbody.innerHTML = \
+  tbody.innerHTML = 
     <tr>
       <td colspan="5" class="muted">
-        Planned door-equivalents: \ (material model pending)
+        Planned door-equivalents:  (material model pending)
       </td>
     </tr>
-  \
+  
 }
 
 document.getElementById("runPlanning")
   ?.addEventListener("click", runMaterialPlanning)
+
