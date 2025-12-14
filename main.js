@@ -323,26 +323,51 @@ function renderManagement(){
     .sort((a,b)=>a.class.localeCompare(b.class))
     .forEach(s=>{
       const vendor = s.vendor || "Vendor not provided"
+      const abc = s.class
+
+      const u30 = s.window30.adjusted
+      const u60 = s.window60.adjusted
+      const u90 = s.window90.adjusted
+
+      const planningUsage = getPlanningUsage(s)
+      const dailyUsage = planningUsage
+      const weeklyUsage = dailyUsage * 5
+
       const trueLead = state.leadTimes[vendor]
         ? median(state.leadTimes[vendor])
         : 0
 
-      const lt = trueLead ? trueLead.toFixed(2) : ""
-      const variance = lt ? (Number(lt) - trueLead).toFixed(2) : "—"
+      const monthsCover = trueLead ? (trueLead / 4.33).toFixed(1) : "—"
+
+      const nextReceipt = state.supply[s.sku]?.[0]?.recvDate || "None"
+
+      let runoutText = "No usage"
+      if (dailyUsage > 0) {
+        const daysCover = trueLead * 7
+        runoutText = `~${Math.round(daysCover)} days after order`
+      }
 
       r.innerHTML += `
-        <div class="card card-${s.class}">
-          <div class="card-title">${s.sku}</div>
+        <div class="card card-${abc}">
+          <div class="card-title">
+            ${s.sku}
+            <span class="badge badge-${abc}">${abc}</span>
+          </div>
           <div class="card-desc">${s.desc}</div>
 
           <div class="card-body">
-            <div>${patternLabel(s)}</div>
-            <div class="muted">
-              Adj usage (${state.planning.window}d):
-              ${getPlanningUsage(s).toFixed(4)} / working day
-            </div>
+            <strong>Usage (units / working day)</strong><br>
+            30d: ${u30.toFixed(3)} |
+            60d: ${u60.toFixed(3)} |
+            90d: ${u90.toFixed(3)}
 
-            <br>
+            <br><br>
+            <strong>Planning rate (${state.planning.window}d)</strong><br>
+            ${dailyUsage.toFixed(3)} / day
+            (${weeklyUsage.toFixed(1)} / week)
+
+            <br><br>
+            <strong>Supply</strong><br>
             Vendor:
             <input class="inline-edit" value="${vendor}"
               onchange="
@@ -350,20 +375,22 @@ function renderManagement(){
                 if(!state.leadTimes[this.value]) state.leadTimes[this.value]=[];
                 renderManagement();
               ">
-
             <br>
-            Lead time (weeks):
-            <input class="inline-edit" value="${lt}"
+            Lead time:
+            <input class="inline-edit" value="${trueLead.toFixed(2)}"
               onchange="
                 state.leadTimes['${vendor}']=[Number(this.value)];
                 renderManagement();
-              ">
+              "> weeks
+            <br>
+            True lead time: ${trueLead.toFixed(2)} weeks
+            (~${monthsCover} months)
+            <br>
+            Next receipt: ${nextReceipt}
 
             <br><br>
-            <span class="muted">
-              True lead time: ${trueLead.toFixed(2)} weeks<br>
-              Variance (entered − actual): ${variance} weeks
-            </span>
+            <strong>Risk</strong><br>
+            Run-out: ${runoutText}
           </div>
 
           <div class="card-footer">
@@ -373,9 +400,6 @@ function renderManagement(){
       `
     })
 }
-
-
-  
 
 function renderValidation(){
   const v=state.validation
