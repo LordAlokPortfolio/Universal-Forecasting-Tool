@@ -459,3 +459,101 @@ document.addEventListener("DOMContentLoaded",()=>{
   setMode("analyst")   // default view
 })
 
+// ---- Door-Equivalent Model ----
+
+// conservative, stable coefficients
+const DOOR_EQUIVALENTS = {
+  single: 1.0,
+  double: 1.9,
+  single_sidelite: 1.5,
+  double_sidelite: 2.5
+}
+
+// inferred historical mix (can be refined later)
+const DEFAULT_MIX = {
+  single: 0.52,
+  double: 0.28,
+  single_sidelite: 0.12,
+  double_sidelite: 0.08
+}
+
+function computeDoorEquivalents(doorsPerDay) {
+  let dePerDoor = 0
+  for (const k in DEFAULT_MIX) {
+    dePerDoor += DEFAULT_MIX[k] * DOOR_EQUIVALENTS[k]
+  }
+  return doorsPerDay * dePerDoor
+}
+
+// ---- Material intensity from history ----
+
+function deriveMaterialPerDE(cycleCounts, purchaseHistory) {
+  // aggregate material usage from purchases
+  const materialTotals = {}
+
+  purchaseHistory.forEach(r => {
+    const mat = r.material
+    if (!materialTotals[mat]) {
+      materialTotals[mat] = {
+        qty: 0,
+        unit: r.unit
+      }
+    }
+    materialTotals[mat].qty += r.quantity
+  })
+
+  // estimate total historical DE from cycle counts
+  const totalDoors = cycleCounts.reduce((s, r) => s + r.doorsProduced, 0)
+  const totalDE = computeDoorEquivalents(totalDoors / cycleCounts.length) * cycleCounts.length
+
+  // material per DE
+  const perDE = {}
+  for (const m in materialTotals) {
+    perDE[m] = {
+      unit: materialTotals[m].unit,
+      perDE: materialTotals[m].qty / totalDE
+    }
+  }
+
+  return perDE
+}
+
+// ---- Planning engine ----
+
+function runMaterialPlanning() {
+  const doorsPerDay = Number(document.getElementById("doorsPerDay").value)
+const planningMonths = Number(document.getElementById("planningMonths").value)
+
+const avgWorkingDaysPerMonth = 21.75 // typical business planning constant (260/12)
+const horizonWorkingDays = planningMonths * avgWorkingDaysPerMonth
+
+const plannedDE = dePerDay * horizonWorkingDays
+
+
+  const materialRates = deriveMaterialPerDE(state.cycleCounts, state.purchaseHistory)
+
+  const tbody = document.querySelector("#materialPlan tbody")
+  tbody.innerHTML = ""
+
+  for (const mat in materialRates) {
+    const rate = materialRates[mat].perDE
+    const expected = plannedDE * rate
+
+    const low = expected * 0.9
+    const high = expected * 1.1
+
+    const tr = document.createElement("tr")
+    tr.innerHTML = `
+      <td>${mat}</td>
+      <td>${materialRates[mat].unit}</td>
+      <td>${expected.toFixed(0)}</td>
+      <td>${low.toFixed(0)}</td>
+      <td>${high.toFixed(0)}</td>
+    `
+    tbody.appendChild(tr)
+  }
+}
+
+// ---- Bind ----
+document.getElementById("runPlanning")
+  ?.addEventListener("click", runMaterialPlanning)
