@@ -1,4 +1,4 @@
-"use strict"
+﻿"use strict"
 function renderAbout(){
   const el = document.getElementById("about-view")
   if (!el) return
@@ -30,7 +30,7 @@ const HOLIDAYS = new Set([
 
 const MONTH_MAP = {jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12}
 
-// 🔒 Horizon policy (NON-NEGOTIABLE)
+// ðŸ”’ Horizon policy (NON-NEGOTIABLE)
 const WEEKS_PER_MONTH = 4.33
 const FORWARD_HORIZON_MONTHS = 24
 const FORWARD_HORIZON_WEEKS = FORWARD_HORIZON_MONTHS * WEEKS_PER_MONTH
@@ -337,7 +337,7 @@ function renderManagement(){
         ? median(state.leadTimes[vendor])
         : 0
 
-      const monthsCover = trueLead ? (trueLead / 4.33).toFixed(1) : "—"
+      const monthsCover = trueLead ? (trueLead / 4.33).toFixed(1) : "â€”"
 
       const nextReceipt = state.supply[s.sku]?.[0]?.recvDate || "None"
 
@@ -405,7 +405,7 @@ function renderValidation(){
   const v=state.validation
   const el=document.getElementById("validation-summary")
   if(!el||!v)return
-  el.textContent=`Validation — missing:${v.missingStockCells}, invalid:${v.invalidStockCells}, replenishments:${v.replenishmentEvents}, duplicates:${v.duplicateSkus.join(",")||"none"}`
+  el.textContent=`Validation â€” missing:${v.missingStockCells}, invalid:${v.invalidStockCells}, replenishments:${v.replenishmentEvents}, duplicates:${v.duplicateSkus.join(",")||"none"}`
 }
 
 
@@ -458,7 +458,7 @@ document.addEventListener("DOMContentLoaded",()=>{
   ?.addEventListener("click",()=>setMode("planning"))
 
 
-  renderAbout()        // 👈 KEY FIX
+  renderAbout()        // ðŸ‘ˆ KEY FIX
   setMode("analyst")   // default view
 })
 
@@ -524,49 +524,24 @@ function deriveMaterialPerDE(cycleCounts, purchaseHistory) {
 // ---- Planning engine ----
 
 function runMaterialPlanning() {
-  const doorsPerDay = Number(document.getElementById("doorsPerDay").value)
-  const workingDays = Number(document.getElementById("workingDays").value)
+  const doorsPerDay = Number(document.getElementById("doorsPerDay")?.value || 0)
+  const workingDays = Number(document.getElementById("workingDays")?.value || 0)
+  if (!doorsPerDay || !workingDays) return
 
   const dePerDay = computeDoorEquivalents(doorsPerDay)
   const plannedDE = dePerDay * workingDays
 
-  // TEMP: prevent crash until material model is finalized
   const tbody = document.querySelector("#materialPlan tbody")
-  tbody.innerHTML = `
+  if (!tbody) return
+
+  tbody.innerHTML = \
     <tr>
       <td colspan="5" class="muted">
-        Material planning engine wired. Awaiting material history mapping.
+        Planned door-equivalents: \ (material model pending)
       </td>
     </tr>
-  `
-}
-
-
-function runMaterialPlanning() {
-  const doorsPerDay = Number(document.getElementById("doorsPerDay").value)
-const planningMonths = Number(document.getElementById("planningMonths").value)
-
-const avgWorkingDaysPerMonth = 21.75 // typical business planning constant (260/12)
-const horizonWorkingDays = planningMonths * avgWorkingDaysPerMonth
-
-const plannedDE = dePerDay * horizonWorkingDays
-
-
-  const materialRates = deriveMaterialPerDE(state.cycleCounts, state.purchaseHistory)
-
-  const tbody = document.querySelector("#materialPlan tbody")
-  tbody.innerHTML = ""
-
-  for (const mat in materialRates) {
-    const rate = materialRates[mat].perDE
-    const expected = plannedDE * rate
-
-    const low = expected * 0.9
-    const high = expected * 1.1
-
-    const tr = document.createElement("tr")
-    tr.innerHTML = `
-      <td>${mat}</td>
+  \
+}</td>
       <td>${materialRates[mat].unit}</td>
       <td>${expected.toFixed(0)}</td>
       <td>${low.toFixed(0)}</td>
@@ -579,3 +554,4 @@ const plannedDE = dePerDay * horizonWorkingDays
 // ---- Bind ----
 document.getElementById("runPlanning")
   ?.addEventListener("click", runMaterialPlanning)
+

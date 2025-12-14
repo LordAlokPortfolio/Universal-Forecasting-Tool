@@ -56,28 +56,28 @@ input[type=file]{background:#020617;color:#e5e7eb;border:1px solid #1f2937;paddi
   <button id="btn-planning" class="toggle-button">Planning</button>
 </div>
 
-<!-- FILE INPUTS -->
-<div style="margin:10px 0">
-  <div>
-    <strong>Cycle Count CSV (required)</strong><br>
-    <input id="cycle-file" type="file" accept=".csv">
-  </div>
-  <div style="margin-top:6px">
-    <strong>Purchase History CSV (optional)</strong><br>
-    <input id="po-file" type="file" accept=".csv">
-  </div>
-</div>
-
-<!-- PLANNING WINDOW -->
-<div class="plan-window">
-  <span class="muted">Planning window:</span>
-  <button id="btn-win-30" class="plan-btn">30d</button>
-  <button id="btn-win-60" class="plan-btn">60d</button>
-  <button id="btn-win-90" class="plan-btn active">90d</button>
-</div>
-
 <!-- ANALYST -->
 <div id="analyst-view">
+
+  <!-- FILE INPUTS -->
+  <div style="margin:10px 0">
+    <div>
+      <strong>Cycle Count CSV (required)</strong><br>
+      <input id="cycle-file" type="file" accept=".csv">
+    </div>
+    <div style="margin-top:6px">
+      <strong>Purchase History CSV (optional)</strong><br>
+      <input id="po-file" type="file" accept=".csv">
+    </div>
+  </div>
+
+  <!-- PLANNING WINDOW -->
+  <div class="plan-window">
+    <span class="muted">Planning window:</span>
+    <button id="btn-win-30" class="plan-btn">30d</button>
+    <button id="btn-win-60" class="plan-btn">60d</button>
+    <button id="btn-win-90" class="plan-btn active">90d</button>
+  </div>
   <table width="100%" cellspacing="0">
     <thead>
       <tr>
@@ -92,8 +92,38 @@ input[type=file]{background:#020617;color:#e5e7eb;border:1px solid #1f2937;paddi
     <tbody id="analyst-body"></tbody>
   </table>
 </div>
-<section id="planning" class="panel hidden">
-  <section class="panel"></section>
+<div id="planning-view" class="hidden">
+  <section class="panel">
+    <h2>Production Planning (BOM-less)</h2>
+
+    <div class="planning-inputs">
+      <label>
+        Doors per day
+        <input type="number" id="doorsPerDay" value="45" min="1" />
+      </label>
+
+      <label>
+        Working days per year
+        <input type="number" id="workingDays" value="250" min="1" />
+      </label>
+
+      <button id="runPlanning">Calculate Material Plan</button>
+    </div>
+
+    <table id="materialPlan">
+      <thead>
+        <tr>
+          <th>Material</th>
+          <th>Unit</th>
+          <th>Expected</th>
+          <th>Low</th>
+          <th>High</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </section>
+</div>
   <h2>Production Planning (BOM-less)</h2>
     </section>
 </div>
@@ -217,3 +247,4 @@ document.getElementById("btn-win-90").onclick=()=>setPlanningWindow(90)
 
 </body>
 </html>
+
