@@ -535,12 +535,8 @@ function runMaterialPlanning() {
   const tbody = document.querySelector("#materialPlan tbody")
   if (!tbody) return
 
-  tbody.innerHTML = 
-    <tr>
-      <td colspan="5" class="muted">
-        Planned door-equivalents:  (material model pending)
-      </td>
-    </tr>
+  tbody.innerHTML = `<tr><td colspan="5" class="muted">Planned door-equivalents: ${plannedDE.toFixed(0)} (material model pending)</td></tr>`
+
   
 }
 
