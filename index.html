@@ -2,211 +2,142 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>Inventory Intelligence</title>
+<title>Universal Forecasting Tool — v2</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 
 <style>
-body {
-  background:#0b1120;
-  margin:0;
-  color:#e5e7eb;
-  font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif
-}
-.page { padding:20px; max-width:1300px; margin:0 auto }
+body{background:#0b1120;color:#e5e7eb;margin:0;font-family:system-ui}
+.page{max-width:1400px;margin:auto;padding:20px}
+.hidden{display:none}
+button{cursor:pointer}
 
-.toggle-container {
-  display:flex;
-  justify-content:flex-end;
-  gap:8px;
-  margin-bottom:10px
-}
-.toggle-button {
-  padding:6px 14px;
-  border-radius:20px;
-  border:1px solid #38bdf8;
-  background:none;
-  color:#38bdf8;
-  cursor:pointer;
-  font-size:14px
-}
-.toggle-button.active {
-  background:#38bdf8;
-  color:#0b1120;
-  font-weight:600
-}
+.toggle-container{display:flex;gap:8px;justify-content:flex-end}
+.toggle-button{padding:6px 14px;border-radius:18px;border:1px solid #38bdf8;background:none;color:#38bdf8}
+.toggle-button.active{background:#38bdf8;color:#0b1120;font-weight:700}
 
-.hidden { display:none }
+input[type=file]{background:#020617;color:#e5e7eb;border:1px solid #1f2937;padding:6px;border-radius:6px}
 
-#file-area { margin:10px 0 }
-input[type=file] {
-  padding:6px 10px;
-  border-radius:6px;
-  border:1px solid #1f2937;
-  background:#020617;
-  color:#e5e7eb
-}
+.snap-container{height:75vh;overflow-y:auto;scroll-snap-type:y mandatory}
+.card{background:#111827;border-radius:12px;padding:16px;margin-bottom:16px;scroll-snap-align:start;border-left:6px solid #374151}
+.card-A{border-left-color:#22c55e}
+.card-B{border-left-color:#facc15}
+.card-C{border-left-color:#64748b}
 
-/* ---------- Management Rolodex ---------- */
-.snap-container {
-  height:75vh;
-  overflow-y:auto;
-  scroll-snap-type:y mandatory;
-  padding-right:6px
-}
-.rolodex-card {
-  scroll-snap-align:start;
-  background:#111827;
-  border-radius:12px;
-  padding:16px;
-  margin-bottom:16px;
-  box-shadow:0 10px 30px rgba(0,0,0,.35);
-  border-left:6px solid #374151
-}
-.card-A { border-left-color:#22c55e }
-.card-B { border-left-color:#facc15 }
-.card-C { border-left-color:#64748b }
+.card-title{font-size:18px;font-weight:700}
+.card-desc{color:#9ca3af;font-size:14px;margin-top:2px}
+.card-body{margin-top:10px;line-height:1.45}
+.card-footer{margin-top:10px;border-top:1px solid #1f2937;padding-top:8px;font-weight:600}
 
-.card-header {
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:12px
-}
-.card-title {
-  font-size:18px;
-  font-weight:700
-}
-.badge {
-  padding:2px 10px;
-  border-radius:999px;
-  font-size:12px;
-  font-weight:700
-}
-.badge-A { background:#14532d; color:#22c55e }
-.badge-B { background:#713f12; color:#facc15 }
-.badge-C { background:#1f2937; color:#9ca3af }
+.inline-edit{background:#020617;border:1px solid #374151;color:#e5e7eb;border-radius:4px;padding:4px}
 
-.card-body { margin-top:10px; line-height:1.4 }
-.card-footer {
-  margin-top:12px;
-  padding-top:10px;
-  border-top:1px solid #1f2937;
-  font-weight:600
-}
+.about{max-width:900px;line-height:1.6}
+.about h3{margin-top:24px}
+.muted{color:#9ca3af}
 
-/* Prominence */
-.card-A { min-height:220px }
-.card-B { min-height:160px }
-.card-C { min-height:120px }
-
-.card-collapsed .card-body,
-.card-collapsed .card-footer { display:none }
-.card-expand {
-  margin-top:8px;
-  font-size:13px;
-  color:#38bdf8;
-  cursor:pointer
-}
-
-/* ---------- Tables ---------- */
-table {
-  width:100%;
-  border-collapse:collapse;
-  margin-top:10px
-}
-th, td {
-  padding:6px 8px;
-  border-bottom:1px solid #1f2937;
-  text-align:left
-}
-th { color:#9ca3af; font-weight:600 }
-
-#detail-view {
-  margin-top:12px;
-  padding:12px;
-  background:#020617;
-  border-radius:8px;
-  min-height:80px
-}
-.section { margin-bottom:12px }
-.muted { color:#9ca3af; font-size:13px }
+/* Planning window */
+.plan-window{display:flex;gap:6px;margin:10px 0}
+.plan-btn{padding:4px 10px;border-radius:14px;border:1px solid #334155;background:none;color:#cbd5f5}
+.plan-btn.active{background:#334155;font-weight:700}
 
 /* Validation */
-.badge-good { background:#14532d; color:#22c55e; padding:4px 10px; border-radius:999px }
-.badge-warn { background:#713f12; color:#facc15; padding:4px 10px; border-radius:999px }
+.validation{margin-top:10px;padding:10px;border:1px solid #1f2937;border-radius:8px;background:#020617}
 </style>
 </head>
 
 <body>
 <div class="page">
 
-  <div class="toggle-container">
-    <button id="btn-analyst" class="toggle-button active">Analyst</button>
-    <button id="btn-management" class="toggle-button">Management</button>
-    <button id="btn-about" class="toggle-button">About</button>
-  </div>
+<!-- MODE TOGGLE -->
+<div class="toggle-container">
+  <button id="btn-analyst" class="toggle-button active">Analyst</button>
+  <button id="btn-management" class="toggle-button">Management</button>
+  <button id="btn-about" class="toggle-button">About</button>
+</div>
 
-  <div id="file-area">
-    <input id="file-input" type="file" accept=".csv" />
+<!-- FILE INPUTS -->
+<div style="margin:10px 0">
+  <div>
+    <strong>Cycle Count CSV (required)</strong><br>
+    <input id="cycle-file" type="file" accept=".csv">
   </div>
+  <div style="margin-top:6px">
+    <strong>Purchase History CSV (optional)</strong><br>
+    <input id="po-file" type="file" accept=".csv">
+  </div>
+</div>
 
-  <!-- Analyst -->
-  <div id="analyst-table">
-    <table>
-      <thead>
-        <tr>
-          <th>SKU</th>
-          <th>Class</th>
-          <th>Periods</th>
-          <th>Total Qty</th>
-          <th>Avg / Period</th>
-          <th>MAPE %</th>
-          <th>Forecast</th>
-        </tr>
-      </thead>
-      <tbody id="summary-body"></tbody>
-    </table>
-  </div>
+<!-- PLANNING WINDOW -->
+<div class="plan-window">
+  <span class="muted">Planning window:</span>
+  <button id="btn-win-30" class="plan-btn">30d</button>
+  <button id="btn-win-60" class="plan-btn">60d</button>
+  <button id="btn-win-90" class="plan-btn active">90d</button>
+</div>
 
-  <!-- Management (Rolodex replaces table output only) -->
-  <div id="management-table" class="hidden">
-    <div class="snap-container" id="mgmt-rolodex"></div>
-  </div>
+<!-- ANALYST -->
+<div id="analyst-view">
+  <table width="100%" cellspacing="0">
+    <thead>
+      <tr>
+        <th>SKU</th>
+        <th>Class</th>
+        <th>Avg / WD</th>
+        <th>30d</th>
+        <th>60d</th>
+        <th>90d</th>
+      </tr>
+    </thead>
+    <tbody id="analyst-body"></tbody>
+  </table>
+</div>
 
-  <!-- Validation -->
-  <div id="validation-panel">
-    <h4>Data Validation</h4>
-    <div>Overall Status: <span id="validation-score" class="badge-good">Waiting for data</span></div>
-    <ul>
-      <li>Missing stock entries: <span id="val-missing">0</span></li>
-      <li>Non-chronological dates: <span id="val-nonchrono">No</span></li>
-      <li>Invalid stock values: <span id="val-invalid">0</span></li>
-      <li>Replenishment jumps: <span id="val-replenish">0</span></li>
-      <li>Duplicate SKUs: <span id="val-duplicates">None</span></li>
-    </ul>
-  </div>
+<!-- MANAGEMENT -->
+<div id="management-view" class="hidden">
+  <div class="snap-container" id="rolodex"></div>
+</div>
 
-  <div id="detail-view">
-    <div id="detail-content">Click a SKU.</div>
-  </div>
+<!-- VALIDATION -->
+<div id="validation-summary" class="validation muted"></div>
 
-  <div id="about-page" class="hidden">
-    <h3>About</h3>
-    <p>
-      Client-only demand analysis using historical cycle counts,
-      working-day normalization, and rolling usage windows.
-    </p>
-    <ul>
-      <li>No backend</li>
-      <li>Weekends + Ontario holidays excluded</li>
-      <li>Rolling 30 / 60 / 90 working-day windows</li>
-      <li>ABC-based management decision framing</li>
-    </ul>
-  </div>
+<!-- ABOUT -->
+<div id="about-view" class="hidden about">
+  <h2>Universal Forecasting Tool — Version 2</h2>
+
+  <h3>What problem this solves</h3>
+  <p>
+    Most inventory tools mix demand and supply. This tool keeps them separate
+    so decisions are based on real consumption, not receipts.
+  </p>
+
+  <h3>What data is used</h3>
+  <ul>
+    <li>Cycle counts to calculate demand</li>
+    <li>Purchase history to understand supply and lead time</li>
+  </ul>
+
+  <h3>Planning horizon</h3>
+  <p>
+    Internally the model plans in working days and weeks for accuracy.
+    Externally it presents a <strong>0–24 month horizon</strong>,
+    which is how planners communicate with management.
+  </p>
+
+  <p class="muted">
+    Version 2 extends Version 1 without removing any demand logic.
+  </p>
+</div>
 
 </div>
 
 <script src="main.js"></script>
+
+<script>
+/* Planning window buttons */
+document.getElementById("btn-win-30").onclick=()=>setPlanningWindow(30)
+document.getElementById("btn-win-60").onclick=()=>setPlanningWindow(60)
+document.getElementById("btn-win-90").onclick=()=>setPlanningWindow(90)
+</script>
+
 </body>
 </html>
