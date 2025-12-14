@@ -254,7 +254,7 @@ function parseDemand(rows){
   validation.duplicateSkus=[...dup]
   state.validation=validation
   state.demand=series
-  renderAll()
+  setMode(state.mode)
 }
 
 /* =========================
@@ -408,11 +408,6 @@ function renderValidation(){
   el.textContent=`Validation — missing:${v.missingStockCells}, invalid:${v.invalidStockCells}, replenishments:${v.replenishmentEvents}, duplicates:${v.duplicateSkus.join(",")||"none"}`
 }
 
-function renderAll(){
-  if(state.mode==="analyst")renderAnalyst()
-  if(state.mode==="management")renderManagement()
-  renderValidation()
-}
 
 /* =========================
    MODE
@@ -421,7 +416,7 @@ function renderAll(){
 function setMode(m){
   state.mode = m
 
-  const views = ["analyst","management","about"]
+  const views = ["analyst","management","planning","about"]
   views.forEach(v=>{
     document.getElementById(v+"-view")?.classList.toggle("hidden", v!==m)
     document.getElementById("btn-"+v)?.classList.toggle("active", v===m)
@@ -454,6 +449,9 @@ document.addEventListener("DOMContentLoaded",()=>{
   document.getElementById("btn-analyst")?.addEventListener("click",()=>setMode("analyst"))
   document.getElementById("btn-management")?.addEventListener("click",()=>setMode("management"))
   document.getElementById("btn-about")?.addEventListener("click",()=>setMode("about"))
+  document.getElementById("btn-planning")
+  ?.addEventListener("click",()=>setMode("planning"))
+
 
   renderAbout()        // 👈 KEY FIX
   setMode("analyst")   // default view
@@ -519,6 +517,25 @@ function deriveMaterialPerDE(cycleCounts, purchaseHistory) {
 }
 
 // ---- Planning engine ----
+
+function runMaterialPlanning() {
+  const doorsPerDay = Number(document.getElementById("doorsPerDay").value)
+  const workingDays = Number(document.getElementById("workingDays").value)
+
+  const dePerDay = computeDoorEquivalents(doorsPerDay)
+  const plannedDE = dePerDay * workingDays
+
+  // TEMP: prevent crash until material model is finalized
+  const tbody = document.querySelector("#materialPlan tbody")
+  tbody.innerHTML = `
+    <tr>
+      <td colspan="5" class="muted">
+        Material planning engine wired. Awaiting material history mapping.
+      </td>
+    </tr>
+  `
+}
+
 
 function runMaterialPlanning() {
   const doorsPerDay = Number(document.getElementById("doorsPerDay").value)
