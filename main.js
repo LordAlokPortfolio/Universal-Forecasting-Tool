@@ -204,8 +204,12 @@ function parseDemand(rows){
   }
 
   const dateSorted=dateHeaders.filter(h=>h.iso).sort((a,b)=>Date.parse(a.iso)-Date.parse(b.iso))
-  const skuCol=fields.find(f=>f.toLowerCase()==="sku")||fields[0]
-  const descCol=fields.find(f=>f.toLowerCase().includes("desc"))||""
+  const skuCol = fields.find(f=>f.toLowerCase()==="sku") || fields[0]
+  const descCol = fields.find(f=>f.toLowerCase().includes("desc")) || ""
+  const vendorCol = fields.find(f=>{
+    const l = f.toLowerCase()
+    return l.includes("vendor") || l.includes("supplier")
+  }) || ""
 
   const seen=new Map(),dup=new Set()
   const validation={missingStockCells:0,invalidStockCells:0,replenishmentEvents:0,duplicateSkus:[]}
@@ -236,7 +240,9 @@ function parseDemand(rows){
     series.push({
       sku,
       desc: descCol?String(row[descCol]||"").trim():"Description not provided",
-      vendor: state.supply[sku]?.[0]?.vendor||"",
+      vendor: (
+  vendorCol ? String(row[vendorCol] || "").trim() : ""
+) || state.supply[sku]?.[0]?.vendor || "",
       history,
       totalQty,
       avgPerWorkingDay: totalWorking>0?totalQty/totalWorking:0,
