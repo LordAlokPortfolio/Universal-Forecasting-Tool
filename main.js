@@ -137,105 +137,69 @@ function patternLabel(s){
 }
 
 function recommendation(s){
+  // Guard: no demand
   if (!s.history || s.history.length === 0 || s.avgPerWorkingDay <= 0) {
     return "NO ACTION: No meaningful consumption history."
   }
 
   const vendor = s.vendor || "supplier"
 
-  /* =========================
-     1. OBSERVED LEAD TIME (PRIMARY TRUTH)
-     ========================= */
-
-  let observedLeadWeeks = 0
-  if (state.leadTimes[vendor] && state.leadTimes[vendor].length > 0) {
-    observedLeadWeeks = median(state.leadTimes[vendor])
-  }
-
-  // fallback only if no observed data
-  if (!observedLeadWeeks || observedLeadWeeks <= 0) {
-    observedLeadWeeks = 2
-  }
-
-  const leadDays = Math.round(observedLeadWeeks * 7)
-
-  /* =========================
-     2. DETECT IF STOCK-OUT ACTUALLY OCCURRED
-     ========================= */
-
-  // stock-out proxy:
-  // zero movement while demand exists for a sustained window
-  const STOCKOUT_WINDOW_DAYS = 23
-
-  let zeroMoveDays = 0
-  let stockoutUsage = 0
-
-  for (let i = s.history.length - 1; i >= 0; i--) {
-    const p = s.history[i]
-    if (p.workingDays <= 0) continue
-
-    if (p.qty === 0) {
-      zeroMoveDays += p.workingDays
-    } else {
-      stockoutUsage += p.qty
-      zeroMoveDays += p.workingDays
-    }
-
-    if (zeroMoveDays >= STOCKOUT_WINDOW_DAYS) break
-  }
-
-  const stockoutOccurred = zeroMoveDays >= STOCKOUT_WINDOW_DAYS
-
-  /* =========================
-     3. DEMAND RATE
-     ========================= */
-
-  const dailyUsage = s.avgPerWorkingDay
-  const weeklyUsage = dailyUsage * 5
-
-  /* =========================
-     4. DECISION LOGIC
-     ========================= */
-
-  if (stockoutOccurred) {
-    // POST-MORTEM (GM asked this explicitly)
-    const avgDuringWindow = stockoutUsage / zeroMoveDays
-    const missedQty = Math.round(avgDuringWindow * leadDays)
-
+  // =========================
+  // CURRENT STOCK (SOURCE OF TRUTH)
+  // =========================
+  if (s.currentStock === null || isNaN(s.currentStock)) {
     return `
-<strong>STOCK-OUT OCCURRED</strong><br>
-Over ${zeroMoveDays} working days, we ran out while consuming <strong>${Math.round(stockoutUsage)} units</strong>.<br>
-Observed supplier lead time: <strong>${leadDays} working days</strong> (${vendor}).<br>
-Average usage during that period: <strong>${avgDuringWindow.toFixed(2)} units/day</strong>.<br>
-<strong>Conclusion:</strong> We should have placed an order <strong>${leadDays} working days before the stock-out began</strong> for <strong>~${missedQty} units</strong>.
+<strong>INSUFFICIENT INVENTORY VISIBILITY</strong><br>
+Right now we do not have a reliable stock-on-hand value from the cycle-count file.<br>
+Recent usage: <strong>${s.avgPerWorkingDay.toFixed(2)} units/day</strong>.<br>
+<strong>Action:</strong> Confirm current stock on hand to decide whether an order is required.
 `.trim()
   }
 
-  /* =========================
-     5. NO STOCK-OUT YET → FORWARD LOOK
-     ========================= */
+  const onHand = s.currentStock
 
-  const projectedLeadDemand = dailyUsage * leadDays
+  // =========================
+  // OBSERVED LEAD TIME (PRIMARY)
+  // =========================
+  let leadWeeks = state.leadTimes[vendor]?.length
+    ? median(state.leadTimes[vendor])
+    : 0
 
+  if (!leadWeeks || leadWeeks <= 0) leadWeeks = 2
+  const leadDays = Math.round(leadWeeks * 7)
+
+  // =========================
+  // DEMAND
+  // =========================
+  const dailyUsage = s.avgPerWorkingDay
+  const weeklyUsage = dailyUsage * 5
+  const leadTimeDemand = dailyUsage * leadDays
+
+  // =========================
+  // DECISION (HONEST + GM-SAFE)
+  // =========================
   let decision
   let reason
 
-  if (projectedLeadDemand > weeklyUsage * 2) {
-    decision = "PLACE ORDER NOW"
-    reason = "Projected consumption during lead time exceeds comfortable coverage"
+  if (onHand < leadTimeDemand) {
+    decision = "PLACE ORDER"
+    reason = "Current stock will not cover expected demand during supplier lead time"
   } else {
     decision = "NO IMMEDIATE ORDER"
-    reason = "Coverage adequate through lead time"
+    reason = "Current stock is sufficient to cover supplier lead time demand"
   }
 
   return `
 <strong>${decision}</strong><br>
+Right now we have <strong>${onHand} units</strong> on hand.<br>
+Recent usage: <strong>${dailyUsage.toFixed(2)} units/day</strong>
+(~${Math.round(weeklyUsage)} per week).<br>
 Observed supplier lead time: <strong>${leadDays} working days</strong> (${vendor}).<br>
-Current usage rate: <strong>${dailyUsage.toFixed(2)} units/day</strong> (~${Math.round(weeklyUsage)} per week).<br>
-Expected usage over lead time: <strong>~${Math.round(projectedLeadDemand)} units</strong>.<br>
-<strong>Reason:</strong> ${reason}.
+Expected consumption during lead time: <strong>~${Math.round(leadTimeDemand)} units</strong>.<br>
+<strong>Decision basis:</strong> ${reason}.
 `.trim()
 }
+
 
 
 
@@ -314,18 +278,7 @@ function parseDemand(rows){
     const totalWorking=history.reduce((s,p)=>s+p.workingDays,0)
     const {window30,window60,window90}=computeWindows(history)
 
-    series.push({
-      sku,
-      desc: descCol?String(row[descCol]||"").trim():"Description not provided",
-      vendor: (
-        vendorCol ? String(row[vendorCol] || "").trim() : ""
-      ) || state.supply[sku]?.[0]?.vendor || "",
-      history,
-      totalQty,
-      avgPerWorkingDay: totalWorking>0 ? totalQty/totalWorking : 0,
-      window30, window60, window90,
-      class: null
-    })
+    series.push
   })
 
   validation.duplicateSkus=[...dup]
@@ -675,23 +628,17 @@ function deriveMaterialPerDE(cycleCounts, purchaseHistory) {
 
 // ---- Planning engine ----
 
-function inferDemandDriver(s){
-  // Production-linked materials (wood, glass, profiles, hardware)
-  if (
-    s.avgPerWorkingDay > 0 &&
-    s.window90.raw > 0 &&
-    s.class === "A"
-  ) {
-    return "production"
-  }
+/* =========================
+   PLANNING (TIME-BASED, CORRECT)
+   ========================= */
 
-  // Consumables (paint, chemicals, MRO)
-  return "consumable"
-}
-
+/*
+Planning definition (LOCKED):
+- Consumables (paint, chemicals, MRO): time-based usage × horizon
+- Production-linked (wood, glass): NOT PLANNED until material-per-door exists
+*/
 
 function runMaterialPlanning() {
-  const doorsPerDay = Number(document.getElementById("doorsPerDay")?.value || 0)
   const workingDays = Number(document.getElementById("workingDays")?.value || 0)
   if (!workingDays) return
 
@@ -699,26 +646,16 @@ function runMaterialPlanning() {
   if (!tbody) return
   tbody.innerHTML = ""
 
-  // Precompute door-equivalents only once
-  const dePerDay = doorsPerDay ? computeDoorEquivalents(doorsPerDay) : 0
-  const plannedDE = dePerDay * workingDays
+  let rowsWritten = 0
 
   state.demand.forEach(s=>{
-    const driver = inferDemandDriver(s)
+    // Use only SKUs with real, stable consumption
+    if (!s.avgPerWorkingDay || s.avgPerWorkingDay <= 0) return
 
-    let plannedQty
-    let basisText
+    const dailyUsage = s.avgPerWorkingDay
+    const plannedQty = dailyUsage * workingDays
 
-    if (driver === "production" && plannedDE > 0) {
-      // Production-linked (wood, glass, etc.)
-      plannedQty = plannedDE * s.avgPerWorkingDay
-      basisText = "Door-equivalent driven"
-    } else {
-      // Consumables (paint, chemicals)
-      plannedQty = s.avgPerWorkingDay * workingDays
-      basisText = "Annual usage driven"
-    }
-
+    // Skip noise
     if (plannedQty <= 0) return
 
     tbody.innerHTML += `
@@ -727,15 +664,16 @@ function runMaterialPlanning() {
         <td>${s.desc}</td>
         <td>${s.class}</td>
         <td>${plannedQty.toFixed(1)}</td>
-        <td class="muted">${basisText}</td>
+        <td class="muted">Time-based consumption (planning horizon)</td>
       </tr>
     `
+    rowsWritten++
   })
 
-  if (!tbody.innerHTML) {
+  if (rowsWritten === 0) {
     tbody.innerHTML =
-      `<tr><td colspan="5" class="muted">No plannable demand detected</td></tr>`
+      `<tr><td colspan="5" class="muted">
+        No consumable demand detected for the selected horizon.
+      </td></tr>`
   }
 }
-
-
