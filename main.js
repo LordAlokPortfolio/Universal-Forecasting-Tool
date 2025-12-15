@@ -233,29 +233,67 @@ function parseDemand(rows){
 
     const totalQty=history.reduce((s,p)=>s+p.qty,0)
     const totalWorking=history.reduce((s,p)=>s+p.workingDays,0)
-    const positive=history.filter(p=>p.qty>0).length
-    const cls=totalQty===0?"C":positive<=2?"B":"A"
     const {window30,window60,window90}=computeWindows(history)
 
     series.push({
       sku,
       desc: descCol?String(row[descCol]||"").trim():"Description not provided",
       vendor: (
-  vendorCol ? String(row[vendorCol] || "").trim() : ""
-) || state.supply[sku]?.[0]?.vendor || "",
+        vendorCol ? String(row[vendorCol] || "").trim() : ""
+      ) || state.supply[sku]?.[0]?.vendor || "",
       history,
       totalQty,
-      avgPerWorkingDay: totalWorking>0?totalQty/totalWorking:0,
-      window30,window60,window90,
-      class:cls
+      avgPerWorkingDay: totalWorking>0 ? totalQty/totalWorking : 0,
+      window30, window60, window90,
+      class: null
     })
   })
 
   validation.duplicateSkus=[...dup]
   state.validation=validation
   state.demand=series
+
+  // =========================
+  // UNIVERSAL ABC CLASSIFICATION
+  // =========================
+
+  const items = state.demand.filter(s => s.avgPerWorkingDay > 0)
+
+  if (items.length > 0) {
+    const values = items.map(s => s.avgPerWorkingDay)
+    const mean = values.reduce((a,b)=>a+b,0) / values.length
+    const variance = values.reduce((s,v)=>s + (v-mean)**2, 0) / values.length
+    const cv = Math.sqrt(variance) / mean
+
+    items.sort((a,b)=>
+      b.avgPerWorkingDay - a.avgPerWorkingDay ||
+      b.window90.adjusted - a.window90.adjusted ||
+      a.sku.localeCompare(b.sku)
+    )
+
+    if (cv >= 1.0) {
+      const total = values.reduce((a,b)=>a+b,0)
+      let cum = 0
+      items.forEach(s=>{
+        cum += s.avgPerWorkingDay
+        const pct = cum / total
+        s.class = pct <= 0.8 ? "A" : pct <= 0.95 ? "B" : "C"
+      })
+    } else {
+      items.forEach((s,i)=>{
+        const p = (i+1)/items.length
+        s.class = p <= 0.2 ? "A" : p <= 0.5 ? "B" : "C"
+      })
+    }
+  }
+
+  state.demand.forEach(s=>{
+    if (!s.class) s.class = "C"
+  })
+
   setMode(state.mode)
 }
+
 
 /* =========================
    SUPPLY PARSE
