@@ -854,3 +854,4 @@ document.getElementById("btn-export")?.addEventListener("click", () => {
   }
   exportManagementPdf()
 })
+
