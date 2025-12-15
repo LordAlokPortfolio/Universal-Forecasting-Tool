@@ -137,62 +137,106 @@ function patternLabel(s){
 }
 
 function recommendation(s){
-  // If no usage, no decision
   if (!s.history || s.history.length === 0 || s.avgPerWorkingDay <= 0) {
-    return "NO ACTION: No consumption history available."
+    return "NO ACTION: No meaningful consumption history."
   }
 
   const vendor = s.vendor || "supplier"
 
-  // --- GM QUESTION #1: How many units were consumed in the last stock-out window? ---
-  // Using last 23 working days as the stock-out window (GM-stated)
-  const STOCKOUT_DAYS = 23
+  /* =========================
+     1. OBSERVED LEAD TIME (PRIMARY TRUTH)
+     ========================= */
 
+  let observedLeadWeeks = 0
+  if (state.leadTimes[vendor] && state.leadTimes[vendor].length > 0) {
+    observedLeadWeeks = median(state.leadTimes[vendor])
+  }
+
+  // fallback only if no observed data
+  if (!observedLeadWeeks || observedLeadWeeks <= 0) {
+    observedLeadWeeks = 2
+  }
+
+  const leadDays = Math.round(observedLeadWeeks * 7)
+
+  /* =========================
+     2. DETECT IF STOCK-OUT ACTUALLY OCCURRED
+     ========================= */
+
+  // stock-out proxy:
+  // zero movement while demand exists for a sustained window
+  const STOCKOUT_WINDOW_DAYS = 23
+
+  let zeroMoveDays = 0
   let stockoutUsage = 0
-  let countedDays = 0
 
-  for (let i = s.history.length - 1; i >= 0 && countedDays < STOCKOUT_DAYS; i--) {
+  for (let i = s.history.length - 1; i >= 0; i--) {
     const p = s.history[i]
-    if (p.workingDays > 0) {
+    if (p.workingDays <= 0) continue
+
+    if (p.qty === 0) {
+      zeroMoveDays += p.workingDays
+    } else {
       stockoutUsage += p.qty
-      countedDays += p.workingDays
+      zeroMoveDays += p.workingDays
     }
+
+    if (zeroMoveDays >= STOCKOUT_WINDOW_DAYS) break
   }
 
-  if (countedDays === 0) {
-    return "NO ACTION: Unable to determine stock-out consumption."
+  const stockoutOccurred = zeroMoveDays >= STOCKOUT_WINDOW_DAYS
+
+  /* =========================
+     3. DEMAND RATE
+     ========================= */
+
+  const dailyUsage = s.avgPerWorkingDay
+  const weeklyUsage = dailyUsage * 5
+
+  /* =========================
+     4. DECISION LOGIC
+     ========================= */
+
+  if (stockoutOccurred) {
+    // POST-MORTEM (GM asked this explicitly)
+    const avgDuringWindow = stockoutUsage / zeroMoveDays
+    const missedQty = Math.round(avgDuringWindow * leadDays)
+
+    return `
+<strong>STOCK-OUT OCCURRED</strong><br>
+Over ${zeroMoveDays} working days, we ran out while consuming <strong>${Math.round(stockoutUsage)} units</strong>.<br>
+Observed supplier lead time: <strong>${leadDays} working days</strong> (${vendor}).<br>
+Average usage during that period: <strong>${avgDuringWindow.toFixed(2)} units/day</strong>.<br>
+<strong>Conclusion:</strong> We should have placed an order <strong>${leadDays} working days before the stock-out began</strong> for <strong>~${missedQty} units</strong>.
+`.trim()
   }
 
-  const dailyDuringStockout = stockoutUsage / countedDays
+  /* =========================
+     5. NO STOCK-OUT YET → FORWARD LOOK
+     ========================= */
 
-  // --- GM QUESTION #2: What is the supplier lead time? ---
-  let leadWeeks = vendor ? median(state.leadTimes[vendor]) : 0
-  if (!leadWeeks || leadWeeks <= 0) leadWeeks = 2
+  const projectedLeadDemand = dailyUsage * leadDays
 
-  const leadDays = Math.round(leadWeeks * 7)
+  let decision
+  let reason
 
-  // --- GM QUESTION #3: Should we have ordered, and how much? ---
-  const missedQty = Math.round(dailyDuringStockout * leadDays)
-
-  // Acceleration context (simple, explainable)
-  const base = s.window90.adjusted
-  const recent = s.window30.adjusted
-  let trend = "Demand stable"
-  if (base > 0) {
-    const ratio = (recent - base) / base
-    if (ratio > 0.25) trend = "Demand accelerating"
-    else if (ratio < -0.25) trend = "Demand slowing"
+  if (projectedLeadDemand > weeklyUsage * 2) {
+    decision = "PLACE ORDER NOW"
+    reason = "Projected consumption during lead time exceeds comfortable coverage"
+  } else {
+    decision = "NO IMMEDIATE ORDER"
+    reason = "Coverage adequate through lead time"
   }
 
   return `
-<strong>PLACE ORDER EARLIER</strong><br>
-Over ${countedDays} working days of stock-out, we consumed <strong>${Math.round(stockoutUsage)} units</strong>.<br>
-Supplier lead time: <strong>${leadDays} working days</strong> (${vendor}).<br>
-Average usage during stock-out: <strong>${dailyDuringStockout.toFixed(2)} units/day</strong>.<br>
-<strong>Conclusion:</strong> We should have placed an order ~${leadDays} days earlier for <strong>~${missedQty} units</strong>.<br>
-${trend}.
+<strong>${decision}</strong><br>
+Observed supplier lead time: <strong>${leadDays} working days</strong> (${vendor}).<br>
+Current usage rate: <strong>${dailyUsage.toFixed(2)} units/day</strong> (~${Math.round(weeklyUsage)} per week).<br>
+Expected usage over lead time: <strong>~${Math.round(projectedLeadDemand)} units</strong>.<br>
+<strong>Reason:</strong> ${reason}.
 `.trim()
 }
+
 
 
 /* =========================
