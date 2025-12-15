@@ -804,7 +804,12 @@ function exportManagementPdf() {
       `Description: ${s.desc || "Not provided"}`,
       `Vendor: ${s.vendor || "Not provided"}`,
       `Usage (30/60/90): ${s.window30.adjusted.toFixed(2)} / ${s.window60.adjusted.toFixed(2)} / ${s.window90.adjusted.toFixed(2)}`,
-      sanitizeText(recommendation(s)).replace(/<[^>]+>/g, "")
+      sanitizeText(
+        recommendation(s)
+        .replace(/<br\s*\/?>/gi, "\n")
+        .replace(/<[^>]+>/g, "")
+)
+
     ]
 
     body.forEach(t => {
