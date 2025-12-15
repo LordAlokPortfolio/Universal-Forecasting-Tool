@@ -336,11 +336,19 @@ function parseSupply(rows){
    ========================= */
 
 function renderAnalyst(){
-  const tb=document.getElementById("analyst-body")
-  if(!tb)return
-  tb.innerHTML=""
-  state.demand.forEach(s=>{
-    tb.innerHTML+=`
+  const tb = document.getElementById("analyst-body")
+  if (!tb) return
+  tb.innerHTML = ""
+
+  const sorted = [...state.demand].sort((a,b)=>
+    a.class.localeCompare(b.class) ||
+    b.avgPerWorkingDay - a.avgPerWorkingDay ||
+    b.window90.adjusted - a.window90.adjusted ||
+    a.sku.localeCompare(b.sku)
+  )
+
+  sorted.forEach(s=>{
+    tb.innerHTML += `
       <tr>
         <td>${s.sku}</td>
         <td>${s.class}</td>
@@ -352,92 +360,98 @@ function renderAnalyst(){
   })
 }
 
+
 function renderManagement(){
   const r = document.getElementById("rolodex")
   if (!r) return
   r.innerHTML = ""
 
-  state.demand
-    .sort((a,b)=>a.class.localeCompare(b.class))
-    .forEach(s=>{
-      const vendor = s.vendor || "Vendor not provided"
-      const abc = s.class
+  const sorted = [...state.demand].sort((a,b)=>
+    a.class.localeCompare(b.class) ||
+    b.avgPerWorkingDay - a.avgPerWorkingDay ||
+    b.window90.adjusted - a.window90.adjusted ||
+    a.sku.localeCompare(b.sku)
+  )
 
-      const u30 = s.window30.adjusted
-      const u60 = s.window60.adjusted
-      const u90 = s.window90.adjusted
+  sorted.forEach(s=>{
+    const vendor = s.vendor || "Vendor not provided"
+    const abc = s.class
 
-      const planningUsage = getPlanningUsage(s)
-      const dailyUsage = planningUsage
-      const weeklyUsage = dailyUsage * 5
+    const u30 = s.window30.adjusted
+    const u60 = s.window60.adjusted
+    const u90 = s.window90.adjusted
 
-      const trueLead = state.leadTimes[vendor]
-        ? median(state.leadTimes[vendor])
-        : 0
+    const dailyUsage = getPlanningUsage(s)
+    const weeklyUsage = dailyUsage * 5
 
-      const monthsCover = trueLead ? (trueLead / 4.33).toFixed(1) : "—"
+    const trueLead = state.leadTimes[vendor]
+      ? median(state.leadTimes[vendor])
+      : 0
 
-      const nextReceipt = state.supply[s.sku]?.[0]?.recvDate || "None"
+    const monthsCover = trueLead ? (trueLead / 4.33).toFixed(1) : "—"
+    const nextReceipt = state.supply[s.sku]?.[0]?.recvDate || "None"
 
-      let runoutText = "No usage"
-      if (dailyUsage > 0) {
-        const daysCover = trueLead * 7
-        runoutText = `~${Math.round(daysCover)} days after order`
-      }
+    let runoutText = "No usage"
+    if (dailyUsage > 0 && trueLead > 0) {
+      runoutText = `~${Math.round(trueLead * 7)} days after order`
+    }
 
-      r.innerHTML += `
-        <div class="card card-${abc}">
-          <div class="card-title">
-            ${s.sku}
-            <span class="badge badge-${abc}">${abc}</span>
-          </div>
-          <div class="card-desc">${s.desc}</div>
-
-          <div class="card-body">
-            <strong>Usage (units / working day)</strong><br>
-            30d: ${u30.toFixed(3)} |
-            60d: ${u60.toFixed(3)} |
-            90d: ${u90.toFixed(3)}
-
-            <br><br>
-            <strong>Planning rate (${state.planning.window}d)</strong><br>
-            ${dailyUsage.toFixed(3)} / day
-            (${weeklyUsage.toFixed(1)} / week)
-
-            <br><br>
-            <strong>Supply</strong><br>
-            Vendor:
-            <input class="inline-edit" value="${vendor}"
-              onchange="
-                state.demand.find(d=>d.sku==='${s.sku}').vendor=this.value;
-                if(!state.leadTimes[this.value]) state.leadTimes[this.value]=[];
-                renderManagement();
-              ">
-            <br>
-            Lead time:
-            <input class="inline-edit" value="${trueLead.toFixed(2)}"
-              onchange="
-                state.leadTimes['${vendor}']=[Number(this.value)];
-                renderManagement();
-              "> weeks
-            <br>
-            True lead time: ${trueLead.toFixed(2)} weeks
-            (~${monthsCover} months)
-            <br>
-            Next receipt: ${nextReceipt}
-
-            <br><br>
-            <strong>Risk</strong><br>
-            Run-out: ${runoutText}
-          </div>
-
-          <div class="card-footer">
-            ${recommendation(s)}
-          </div>
+    r.innerHTML += `
+      <div class="card card-${abc}">
+        <div class="card-title">
+          ${s.sku}
+          <span class="badge badge-${abc}">${abc}</span>
         </div>
-      `
-    })
+
+        <div class="card-desc">${s.desc}</div>
+
+        <div class="card-body">
+          <strong>Usage (units / working day)</strong><br>
+          30d: ${u30.toFixed(3)} |
+          60d: ${u60.toFixed(3)} |
+          90d: ${u90.toFixed(3)}
+
+          <br><br>
+          <strong>Planning rate (${state.planning.window}d)</strong><br>
+          ${dailyUsage.toFixed(3)} / day
+          (${weeklyUsage.toFixed(1)} / week)
+
+          <br><br>
+          <strong>Supply</strong><br>
+          Vendor:
+          <input class="inline-edit" value="${vendor}"
+            onchange="
+              const d = state.demand.find(x=>x.sku==='${s.sku}')
+              if (d) d.vendor=this.value
+              if(!state.leadTimes[this.value]) state.leadTimes[this.value]=[]
+              renderManagement()
+            ">
+          <br>
+          Lead time:
+          <input class="inline-edit" value="${trueLead.toFixed(2)}"
+            onchange="
+              state.leadTimes['${vendor}']=[Number(this.value)]
+              renderManagement()
+            "> weeks
+          <br>
+          True lead time: ${trueLead.toFixed(2)} weeks
+          (~${monthsCover} months)
+          <br>
+          Next receipt: ${nextReceipt}
+
+          <br><br>
+          <strong>Risk</strong><br>
+          Run-out: ${runoutText}
+        </div>
+
+        <div class="card-footer">
+          ${recommendation(s)}
+        </div>
+      </div>
+    `
+  })
 }
+
 
 function renderValidation(){
   const v = state.validation
