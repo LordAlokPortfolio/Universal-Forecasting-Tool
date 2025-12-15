@@ -733,3 +733,99 @@ function runMaterialPlanning() {
       </td></tr>`
   }
 }
+function sanitizeText(input) {
+  if (!input) return ""
+  return String(input)
+    .normalize("NFKD")
+    .replace(/[^\x20-\x7E]/g, "")   // drop non-ASCII
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+function setPlanningWindow(days) {
+  state.planning.window = days
+  document.querySelectorAll(".plan-btn").forEach(b =>
+    b.classList.toggle("active", b.textContent.startsWith(days))
+  )
+  if (state.mode === "analyst") renderAnalyst()
+  if (state.mode === "management") renderManagement()
+}
+
+const ABOUT_TEXT = document.getElementById("about-view")?.innerHTML || ""
+
+
+
+/* =========================
+   PDF GENERATOR
+   =========================
+
+*/
+
+function exportManagementPdf() {
+  const { jsPDF } = window.jspdf
+  const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" })
+
+  let y = 40
+  const pageHeight = doc.internal.pageSize.height
+  const margin = 40
+  const line = 14
+
+  doc.setFont("Helvetica", "bold")
+  doc.setFontSize(14)
+  doc.text("Universal Forecasting Tool — Management Summary", margin, y)
+  y += 20
+
+  doc.setFontSize(9)
+  doc.setFont("Helvetica", "normal")
+  doc.text(`Generated: ${new Date().toLocaleDateString()}`, margin, y)
+  y += 20
+
+  const items = [...state.demand].sort((a, b) =>
+    a.class.localeCompare(b.class) ||
+    b.avgPerWorkingDay - a.avgPerWorkingDay
+  )
+
+  items.forEach(s => {
+    if (y > pageHeight - 60) {
+      doc.addPage()
+      y = 40
+    }
+
+    const header =
+      `${s.sku}  |  Class ${s.class}  |  ${s.avgPerWorkingDay.toFixed(2)} units/day`
+
+    doc.setFont("Helvetica", "bold")
+    doc.text(sanitizeText(header), margin, y)
+    y += line
+
+    doc.setFont("Helvetica", "normal")
+
+    const body = [
+      `Description: ${s.desc || "Not provided"}`,
+      `Vendor: ${s.vendor || "Not provided"}`,
+      `Usage (30/60/90): ${s.window30.adjusted.toFixed(2)} / ${s.window60.adjusted.toFixed(2)} / ${s.window90.adjusted.toFixed(2)}`,
+      sanitizeText(recommendation(s)).replace(/<[^>]+>/g, "")
+    ]
+
+    body.forEach(t => {
+      if (y > pageHeight - 40) {
+        doc.addPage()
+        y = 40
+      }
+      doc.text(sanitizeText(t), margin, y, { maxWidth: 520 })
+      y += line
+    })
+
+    y += 10
+  })
+
+  doc.save("Forecasting_Management_Summary.pdf")
+}
+
+document.getElementById("btn-export")?.addEventListener("click", () => {
+  if (state.mode !== "management") {
+    alert("Switch to Management view before exporting.")
+    return
+  }
+  exportManagementPdf()
+})
