@@ -757,9 +757,7 @@ const ABOUT_TEXT = document.getElementById("about-view")?.innerHTML || ""
 
 /* =========================
    PDF GENERATOR
-   =========================
-
-*/
+   ========================= */
 
 function exportManagementPdf() {
   const { jsPDF } = window.jspdf
@@ -786,42 +784,64 @@ function exportManagementPdf() {
   )
 
   items.forEach(s => {
-    if (y > pageHeight - 60) {
-      doc.addPage()
-      y = 40
-    }
-
-    const header =
-      `${s.sku}  |  Class ${s.class}  |  ${s.avgPerWorkingDay.toFixed(2)} units/day`
-
-    doc.setFont("Helvetica", "bold")
-    doc.text(sanitizeText(header), margin, y)
-    y += line
-
-    doc.setFont("Helvetica", "normal")
-
-    const body = [
-      `Description: ${s.desc || "Not provided"}`,
-      `Vendor: ${s.vendor || "Not provided"}`,
-      `Usage (30/60/90): ${s.window30.adjusted.toFixed(2)} / ${s.window60.adjusted.toFixed(2)} / ${s.window90.adjusted.toFixed(2)}`,
-      sanitizeText(
-        recommendation(s)
-        .replace(/<br\s*\/?>/gi, "\n")
-        .replace(/<[^>]+>/g, "")
-)
-
-    ]
-
-    body.forEach(t => {
-      if (y > pageHeight - 40) {
+    const ensureSpace = linesNeeded => {
+      if (y + linesNeeded * line > pageHeight - 40) {
         doc.addPage()
         y = 40
       }
+    }
+
+    // =========================
+    // SKU HEADER
+    // =========================
+    const header =
+      `${s.sku} | Class ${s.class} | ${s.avgPerWorkingDay.toFixed(2)} units/day`
+
+    ensureSpace(3)
+    doc.setFont("Helvetica", "bold")
+    doc.text(header, margin, y)
+    y += line + 4
+
+    doc.setFont("Helvetica", "normal")
+
+    // =========================
+    // BODY
+    // =========================
+    const body = [
+      `Description: ${s.desc || "Not provided"}`,
+      `Vendor: ${s.vendor || "Not provided"}`,
+      `Usage (30/60/90): ${s.window30.adjusted.toFixed(2)} / ${s.window60.adjusted.toFixed(2)} / ${s.window90.adjusted.toFixed(2)}`
+    ]
+
+    body.forEach(t => {
+      ensureSpace(1)
       doc.text(sanitizeText(t), margin, y, { maxWidth: 520 })
       y += line
     })
 
-    y += 10
+    // =========================
+    // RECOMMENDATION
+    // =========================
+    const recLines = sanitizeText(
+      recommendation(s)
+        .replace(/<br\s*\/?>/gi, "\n")
+        .replace(/<[^>]+>/g, "")
+    ).split("\n")
+
+    ensureSpace(recLines.length + 2)
+
+    recLines.forEach(t => {
+      doc.text(t.trim(), margin, y, { maxWidth: 520 })
+      y += line
+    })
+
+    // =========================
+    // SECTION DIVIDER
+    // =========================
+    y += 12
+    doc.setDrawColor(55, 65, 81)
+    doc.line(margin, y, margin + 520, y)
+    y += 16
   })
 
   doc.save("Forecasting_Management_Summary.pdf")
