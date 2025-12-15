@@ -169,14 +169,21 @@ Recent usage: <strong>${s.avgPerWorkingDay.toFixed(2)} units/day</strong>.<br>
   const leadDays = Math.round(leadWeeks * 7)
 
   // =========================
-  // DEMAND
+  // DEMAND (EXECUTION)
   // =========================
   const dailyUsage = s.avgPerWorkingDay
   const weeklyUsage = dailyUsage * 5
   const leadTimeDemand = dailyUsage * leadDays
 
   // =========================
-  // DECISION (HONEST + GM-SAFE)
+  // PLANNING (0–24 MONTHS, TIME-BASED)
+  // =========================
+  const WORKING_DAYS_PER_YEAR = 260
+  const planningDays24m = WORKING_DAYS_PER_YEAR * 2
+  const plannedQty24m = dailyUsage * planningDays24m
+
+  // =========================
+  // DECISION
   // =========================
   let decision
   let reason
@@ -196,9 +203,12 @@ Recent usage: <strong>${dailyUsage.toFixed(2)} units/day</strong>
 (~${Math.round(weeklyUsage)} per week).<br>
 Observed supplier lead time: <strong>${leadDays} working days</strong> (${vendor}).<br>
 Expected consumption during lead time: <strong>~${Math.round(leadTimeDemand)} units</strong>.<br>
+<strong>24-month planning view:</strong> expected consumption
+<strong>~${Math.round(plannedQty24m)} units</strong> over the next 24 months.<br>
 <strong>Decision basis:</strong> ${reason}.
 `.trim()
 }
+
 
 
 
@@ -214,19 +224,35 @@ function loadCsv(file,cb){
 /* =========================
    DEMAND PARSE (v1 COMPLETE)
    ========================= */
+const isoRegex = /^\d{4}-\d{2}-\d{2}$/
+const slashRegex = /^\d{1,2}\/\d{1,2}\/\d{2,4}$/
+const excelNumRegex = /^\d{5}$/
+const shortRegex = /^\s*(\d{1,2})[-\/\s](Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s*$/i
+
 
 function parseDemand(rows){
   if(!rows||rows.length===0)return
 
   const fields=Object.keys(rows[0])
-  const isoRegex=/^\d{4}-\d{2}-\d{2}$/
-  const shortRegex=/^\s*(\d{1,2})[-\/\s](Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s*$/i
-
   const headerInfos=[]
   fields.forEach((f,idx)=>{
     const t=f.trim()
     let isDate=false,iso,sd,sm
-    if(isoRegex.test(t)){ isDate=true; iso=t }
+    if (isoRegex.test(t)) {
+  isDate = true
+  iso = t
+} else if (slashRegex.test(t)) {
+  const d = new Date(t)
+  if (!isNaN(d)) {
+    isDate = true
+    iso = d.toISOString().slice(0,10)
+  }
+} else if (excelNumRegex.test(t)) {
+  const d = new Date((Number(t) - 25569) * 86400 * 1000)
+  isDate = true
+  iso = d.toISOString().slice(0,10)
+}
+
     else{
       const m=t.match(shortRegex)
       if(m){ isDate=true; sd=parseInt(m[1],10); sm=MONTH_MAP[m[2].toLowerCase().slice(0,3)] }
@@ -278,7 +304,23 @@ function parseDemand(rows){
     const totalWorking=history.reduce((s,p)=>s+p.workingDays,0)
     const {window30,window60,window90}=computeWindows(history)
 
-    series.push
+    const firstStockCol = dateSorted[0]?.field
+const currentStock = firstStockCol ? Number(row[firstStockCol] || 0) : null
+
+series.push({
+  sku,
+  desc: descCol ? String(row[descCol] || "").trim() : "Description not provided",
+  vendor: (
+    vendorCol ? String(row[vendorCol] || "").trim() : ""
+  ) || state.supply[sku]?.[0]?.vendor || "",
+  history,
+  totalQty,
+  avgPerWorkingDay: totalWorking > 0 ? totalQty / totalWorking : 0,
+  window30, window60, window90,
+  currentStock,
+  class: null
+})
+
   })
 
   validation.duplicateSkus=[...dup]
