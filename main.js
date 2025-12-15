@@ -137,28 +137,63 @@ function patternLabel(s){
 }
 
 function recommendation(s){
-  const adj=getPlanningUsage(s)
-
-  if(s.class==="C"||s.window90.raw===0){
-    return"Hold at zero and order only when a real requirement appears."
+  // If no usage, no decision
+  if (!s.history || s.history.length === 0 || s.avgPerWorkingDay <= 0) {
+    return "NO ACTION: No consumption history available."
   }
 
-  if(s.class==="B"){
-    return`Keep minimal stock based on ~${adj.toFixed(2)} units per working day.`
+  const vendor = s.vendor || "supplier"
+
+  // --- GM QUESTION #1: How many units were consumed in the last stock-out window? ---
+  // Using last 23 working days as the stock-out window (GM-stated)
+  const STOCKOUT_DAYS = 23
+
+  let stockoutUsage = 0
+  let countedDays = 0
+
+  for (let i = s.history.length - 1; i >= 0 && countedDays < STOCKOUT_DAYS; i--) {
+    const p = s.history[i]
+    if (p.workingDays > 0) {
+      stockoutUsage += p.qty
+      countedDays += p.workingDays
+    }
   }
 
-  const weeklyNeed=adj*5
-  const vendor=s.vendor||""
+  if (countedDays === 0) {
+    return "NO ACTION: Unable to determine stock-out consumption."
+  }
+
+  const dailyDuringStockout = stockoutUsage / countedDays
+
+  // --- GM QUESTION #2: What is the supplier lead time? ---
   let leadWeeks = vendor ? median(state.leadTimes[vendor]) : 0
-  if(!leadWeeks||leadWeeks<=0)leadWeeks=2
+  if (!leadWeeks || leadWeeks <= 0) leadWeeks = 2
 
-  const buffer=Math.max(Math.round(weeklyNeed*leadWeeks),1)
-  const monthsCover=(leadWeeks/WEEKS_PER_MONTH).toFixed(1)
+  const leadDays = Math.round(leadWeeks * 7)
 
-  return vendor
-    ? `Plan ~${Math.round(weeklyNeed)} units/week and keep ${buffer} units (~${monthsCover} months of cover for ${vendor}).`
-    : `Plan ~${Math.round(weeklyNeed)} units/week and keep ${buffer} units (~${monthsCover} months of cover).`
+  // --- GM QUESTION #3: Should we have ordered, and how much? ---
+  const missedQty = Math.round(dailyDuringStockout * leadDays)
+
+  // Acceleration context (simple, explainable)
+  const base = s.window90.adjusted
+  const recent = s.window30.adjusted
+  let trend = "Demand stable"
+  if (base > 0) {
+    const ratio = (recent - base) / base
+    if (ratio > 0.25) trend = "Demand accelerating"
+    else if (ratio < -0.25) trend = "Demand slowing"
+  }
+
+  return `
+<strong>PLACE ORDER EARLIER</strong><br>
+Over ${countedDays} working days of stock-out, we consumed <strong>${Math.round(stockoutUsage)} units</strong>.<br>
+Supplier lead time: <strong>${leadDays} working days</strong> (${vendor}).<br>
+Average usage during stock-out: <strong>${dailyDuringStockout.toFixed(2)} units/day</strong>.<br>
+<strong>Conclusion:</strong> We should have placed an order ~${leadDays} days earlier for <strong>~${missedQty} units</strong>.<br>
+${trend}.
+`.trim()
 }
+
 
 /* =========================
    CSV LOADING
@@ -596,23 +631,67 @@ function deriveMaterialPerDE(cycleCounts, purchaseHistory) {
 
 // ---- Planning engine ----
 
+function inferDemandDriver(s){
+  // Production-linked materials (wood, glass, profiles, hardware)
+  if (
+    s.avgPerWorkingDay > 0 &&
+    s.window90.raw > 0 &&
+    s.class === "A"
+  ) {
+    return "production"
+  }
+
+  // Consumables (paint, chemicals, MRO)
+  return "consumable"
+}
+
 
 function runMaterialPlanning() {
   const doorsPerDay = Number(document.getElementById("doorsPerDay")?.value || 0)
   const workingDays = Number(document.getElementById("workingDays")?.value || 0)
-  if (!doorsPerDay || !workingDays) return
-
-  const dePerDay = computeDoorEquivalents(doorsPerDay)
-  const plannedDE = dePerDay * workingDays
+  if (!workingDays) return
 
   const tbody = document.querySelector("#materialPlan tbody")
   if (!tbody) return
+  tbody.innerHTML = ""
 
-  tbody.innerHTML = `<tr><td colspan="5" class="muted">Planned door-equivalents: ${plannedDE.toFixed(0)} (material model pending)</td></tr>`
+  // Precompute door-equivalents only once
+  const dePerDay = doorsPerDay ? computeDoorEquivalents(doorsPerDay) : 0
+  const plannedDE = dePerDay * workingDays
 
-  
+  state.demand.forEach(s=>{
+    const driver = inferDemandDriver(s)
+
+    let plannedQty
+    let basisText
+
+    if (driver === "production" && plannedDE > 0) {
+      // Production-linked (wood, glass, etc.)
+      plannedQty = plannedDE * s.avgPerWorkingDay
+      basisText = "Door-equivalent driven"
+    } else {
+      // Consumables (paint, chemicals)
+      plannedQty = s.avgPerWorkingDay * workingDays
+      basisText = "Annual usage driven"
+    }
+
+    if (plannedQty <= 0) return
+
+    tbody.innerHTML += `
+      <tr>
+        <td>${s.sku}</td>
+        <td>${s.desc}</td>
+        <td>${s.class}</td>
+        <td>${plannedQty.toFixed(1)}</td>
+        <td class="muted">${basisText}</td>
+      </tr>
+    `
+  })
+
+  if (!tbody.innerHTML) {
+    tbody.innerHTML =
+      `<tr><td colspan="5" class="muted">No plannable demand detected</td></tr>`
+  }
 }
 
-document.getElementById("runPlanning")
-  ?.addEventListener("click", runMaterialPlanning)
 
