@@ -203,7 +203,7 @@ const onHand = s.currentStock
     decision = "PLACE ORDER"
     reason = "Current stock will not cover expected demand during supplier lead time"
   } else {
-    decision = "NO IMMEDIATE ORDER"
+    decision = "NO IMMEDIATE ORDER: "
     reason = "Current stock is sufficient to cover supplier lead time demand"
   }
 
