@@ -144,19 +144,30 @@ function recommendation(s){
 
   const vendor = s.vendor || "supplier"
 
-  // =========================
-  // CURRENT STOCK (SOURCE OF TRUTH)
-  // =========================
-  if (s.currentStock === null || isNaN(s.currentStock)) {
-    return `
-<strong>INSUFFICIENT INVENTORY VISIBILITY</strong><br>
-Right now we do not have a reliable stock-on-hand value from the cycle-count file.<br>
-Recent usage: <strong>${s.avgPerWorkingDay.toFixed(2)} units/day</strong>.<br>
-<strong>Action:</strong> Confirm current stock on hand to decide whether an order is required.
-`.trim()
-  }
+// =========================
+// CURRENT STOCK (LATEST ≤ TODAY)
+// =========================
+const today = new Date()
+today.setHours(0,0,0,0)
 
-  const onHand = s.currentStock
+// Expect currentStock to be an object keyed by ISO date if available,
+// otherwise reject future-dated values safely
+if (
+  s.currentStock === null ||
+  isNaN(s.currentStock) ||
+  (s.currentStockDate && new Date(s.currentStockDate) > today)
+) {
+  return `
+<strong>INSUFFICIENT INVENTORY VISIBILITY</strong><br>
+Latest usable cycle count must be dated <strong>on or before today</strong>.<br>
+Recent usage: <strong>${s.avgPerWorkingDay.toFixed(2)} units/day</strong>.<br>
+<strong>Action:</strong> Ensure the cycle-count CSV uses the most recent
+count dated ≤ today (future dates are ignored).
+`.trim()
+}
+
+const onHand = s.currentStock
+
 
   // =========================
   // OBSERVED LEAD TIME (PRIMARY)
@@ -288,6 +299,12 @@ function parseDemand(rows){
     const sku=String(row[skuCol]||"").trim()
     if(!sku)return
     const c=(seen.get(sku)||0)+1; seen.set(sku,c); if(c>1)dup.add(sku)
+    const todayIso = new Date().toISOString().slice(0,10)
+    const validDates = dateSorted.filter(d => d.iso <= todayIso)
+    const latest = validDates[validDates.length - 1]
+    const currentStockRaw = latest ? row[latest.field] : null
+    const currentStock = currentStockRaw == null || currentStockRaw === ""
+      ? null : Number(currentStockRaw)
 
     const history=[]
     for(let i=1;i<dateSorted.length;i++){
@@ -303,9 +320,6 @@ function parseDemand(rows){
     const totalQty=history.reduce((s,p)=>s+p.qty,0)
     const totalWorking=history.reduce((s,p)=>s+p.workingDays,0)
     const {window30,window60,window90}=computeWindows(history)
-
-    const firstStockCol = dateSorted[0]?.field
-const currentStock = firstStockCol ? Number(row[firstStockCol] || 0) : null
 
 series.push({
   sku,
