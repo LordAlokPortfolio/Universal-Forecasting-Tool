@@ -59,6 +59,16 @@ input[type=file]{background:#020617;color:#e5e7eb;border:1px solid #1f2937;paddi
 
 <!-- ANALYST -->
 <div id="analyst-view">
+<label>
+  PO Date format:
+  <select id="po-date-format">
+    <option value="AUTO">Auto-detect</option>
+    <option value="ISO">YYYY-MM-DD</option>
+    <option value="DMY">DD/MM/YYYY</option>
+    <option value="MDY">MM/DD/YYYY</option>
+    <option value="EXCEL">Excel serial</option>
+  </select>
+</label>
 
   <!-- FILE INPUTS -->
   <div style="margin:10px 0">
@@ -195,7 +205,7 @@ input[type=file]{background:#020617;color:#e5e7eb;border:1px solid #1f2937;paddi
 
   <h3>Version info</h3>
   <p class="muted">
-    Universal Forecasting Tool — Version 10<br>
+    Universal Forecasting Tool — Version 11<br>
     Client-only • Consumption-based demand • 0 to 24 month planning horizon
   </p>
 </div>
@@ -209,6 +219,10 @@ input[type=file]{background:#020617;color:#e5e7eb;border:1px solid #1f2937;paddi
 document.getElementById("btn-win-30").onclick=()=>setPlanningWindow(30)
 document.getElementById("btn-win-60").onclick=()=>setPlanningWindow(60)
 document.getElementById("btn-win-90").onclick=()=>setPlanningWindow(90)
+document.getElementById("po-date-format")?.addEventListener("change", e => {
+  state.supplyDateFormat = e.target.value
+})
+
 </script>
 
 </body>

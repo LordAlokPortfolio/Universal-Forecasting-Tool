@@ -37,14 +37,44 @@ function parseUniversalDate(v) {
   return isNaN(d) ? null : d
 }
 
+function parseWithSelectedFormat(v) {
+  if (state.supplyDateFormat === "AUTO") {
+    return parseUniversalDate(v)
+  }
+
+  if (v === null || v === undefined || v === "") return null
+  const s = String(v).trim()
+
+  if (state.supplyDateFormat === "EXCEL") {
+    const n = Number(s)
+    return isNaN(n) ? null : new Date((n - 25569) * 86400 * 1000)
+  }
+
+  if (state.supplyDateFormat === "ISO") {
+    return /^\d{4}-\d{2}-\d{2}$/.test(s) ? new Date(s + "T00:00:00") : null
+  }
+
+  const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/)
+  if (!m) return null
+
+  const a = Number(m[1])
+  const b = Number(m[2])
+  const y = Number(m[3])
+
+  return state.supplyDateFormat === "DMY"
+    ? new Date(y, b - 1, a)
+    : new Date(y, a - 1, b)
+}
+
+
 function renderAbout(){
   const el = document.getElementById("about-view")
   if (!el) return
   el.innerHTML = ABOUT_TEXT
 }
 function daysBetween(a, b){
-  const d1 = new Date(a)
-  const d2 = new Date(b)
+  const d1 = a instanceof Date ? a : new Date(a)
+  const d2 = b instanceof Date ? b : new Date(b)
   if (isNaN(d1) || isNaN(d2)) return null
   return Math.round((d2 - d1) / 86400000)
 }
@@ -77,9 +107,12 @@ const HOLIDAYS = new Set([
   "2026-01-01","2026-02-16","2026-04-03","2026-05-18","2026-07-01","2026-09-07","2026-10-12","2026-12-25","2026-12-28"
 ])
 
-const MONTH_MAP = {jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12}
+const MONTH_MAP = {
+  jan:0,feb:1,mar:2,apr:3,may:4,jun:5,
+  jul:6,aug:7,sep:8,oct:9,nov:10,dec:11
+}
 
-// ðŸ”’ Horizon policy (NON-NEGOTIABLE)
+// Horizon policy (NON-NEGOTIABLE)
 const WEEKS_PER_MONTH = 4.33
 const FORWARD_HORIZON_MONTHS = 24
 const FORWARD_HORIZON_WEEKS = FORWARD_HORIZON_MONTHS * WEEKS_PER_MONTH
@@ -87,6 +120,7 @@ const FORWARD_HORIZON_WEEKS = FORWARD_HORIZON_MONTHS * WEEKS_PER_MONTH
 /* =========================
    STATE
    ========================= */
+
 
 const state = {
   demand: [],
@@ -96,6 +130,9 @@ const state = {
   planning: { window: 90 },
   validation: null
 }
+
+state.supplyDateFormat = "AUTO" // AUTO | ISO | DMY | MDY | EXCEL
+
 
 /* =========================
    DATE / WORKDAY HELPERS
@@ -282,7 +319,7 @@ Right now we have <strong>${onHand} units</strong> on hand.<br>
 Recent usage: <strong>${dailyUsage.toFixed(2)} units/day</strong>
 (~${Math.round(weeklyUsage)} per week).<br>
 Observed supplier lead time: <strong>${leadDays !== null ? `${leadDays} working days` : "Insufficient history"}</strong> (${vendor}).<br>
-Expected consumption during lead time: <strong>~${Math.round(leadTimeDemand)} units</strong>.<br>
+Expected consumption during lead time: <strong>${leadTimeDemand !== null ? `~${Math.round(leadTimeDemand)} units` : "N/A"}</strong>.<br>
 <strong>${coverageSentence}</strong><br>
 <strong>24-month planning view:</strong> expected consumption
 <strong>~${Math.round(plannedQty24m)} units</strong> over the next 24 months.<br>
@@ -476,7 +513,7 @@ function parseSupply(rows) {
 
     if (!poDateRaw) return
 
-    const poDate = parseUniversalDate(poDateRaw)
+    const poDate = parseWithSelectedFormat(poDateRaw)
     if (!poDate) return
 
     // -----------------------------
@@ -496,7 +533,7 @@ function parseSupply(rows) {
     // -----------------------------
     // RECEIVED ORDER → LEAD TIME
     // -----------------------------
-    const recvDate = parseUniversalDate(recvDateRaw)
+    const recvDate = parseWithSelectedFormat(recvDateRaw)
     if (!recvDate) return
 
     const leadDays = daysBetween(poDate, recvDate)
@@ -610,16 +647,16 @@ function renderManagement(){
 
     // Lead-time coverage (clear wording)
     let coverageText = "Lead-time coverage: Insufficient data."
-    if (dailyUsage > 0 && trueLead !== null) {
-      const daysOfCover = s.currentStock / dailyUsage
+
+    if (dailyUsage > 0 && trueLead !== null && s.currentStock !== null) {
       const leadDays = trueLead * 7
+      const daysOfCover = s.currentStock / dailyUsage
+
       coverageText =
         daysOfCover >= leadDays
           ? "Lead-time coverage: Inventory covers supplier lead time demand."
           : "Lead-time coverage: Inventory does NOT cover supplier lead time demand."
     }
-
-
 
     r.innerHTML += `
       <div class="card card-${abc}">
@@ -655,7 +692,8 @@ function renderManagement(){
           Lead time:
           <input class="inline-edit" value="${(trueLead !== null ? trueLead.toFixed(2) : "—")}"
             onchange="
-              state.leadTimes['${vendor}']=[Number(this.value)]
+              if (!state.leadTimes['${vendor}']) state.leadTimes['${vendor}'] = []
+              state.leadTimes['${vendor}'].push(Number(this.value))
               renderManagement()
             "> weeks
           <br>
