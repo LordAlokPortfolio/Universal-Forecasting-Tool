@@ -131,7 +131,7 @@ const state = {
   validation: null
 }
 
-state.supplyDateFormat = "AUTO" // AUTO | ISO | DMY | MDY | EXCEL
+state.supplyDateFormat = "MDY" // AUTO | ISO | DMY | MDY | EXCEL
 
 
 /* =========================
@@ -657,6 +657,12 @@ function renderManagement(){
           ? "Lead-time coverage: Inventory covers supplier lead time demand."
           : "Lead-time coverage: Inventory does NOT cover supplier lead time demand."
     }
+    // === STORE MANAGEMENT DECISION (for PDF reuse) ===
+    s._decision = {
+      trueLeadWeeks: trueLead,
+      coverageText,
+      recommendationText: recommendation(s),
+    }
 
     r.innerHTML += `
       <div class="card card-${abc}">
@@ -1026,29 +1032,25 @@ function exportManagementPdf() {
       .filter(x => x.open && x.poDate && x.poDate <= today)
       .sort((a,b) => b.poDate - a.poDate)[0]
 
-    const received = supply.filter(x => !x.open && x.leadWeeks)
-
-
-    const leadWeeks =
-      received.length > 0
-        ? median(received.map(x => x.leadWeeks))
-        : null
+    // === USE MANAGEMENT DECISION (SINGLE SOURCE OF TRUTH) ===
+    const decision = s._decision
 
     writeLine(
       `Observed supplier lead time: ${
-        leadWeeks
-          ? `${Math.round(leadWeeks * 7)} working days (${s.vendor})`
+        decision.trueLeadWeeks !== null
+          ? `${Math.round(decision.trueLeadWeeks * 7)} calendar days (${s.vendor})`
           : "Insufficient history"
       }`
     )
 
-    writeLine(
-      `Next receipt: ${
-        openOrder
-          ? `Open order (PO date ${formatESTDate(openOrder.poDate)})`
-          : "None"
-      }`
-    )
+
+        writeLine(
+          `Next receipt: ${
+            openOrder
+              ? `Open order (PO date ${formatESTDate(openOrder.poDate)})`
+              : "None"
+          }`
+        )
 
     // =========================
     // DECISION / RISK
