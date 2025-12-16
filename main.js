@@ -485,6 +485,7 @@ series.push({
   })
 
   setMode(state.mode)
+  if (Object.keys(state.supply).length) renderManagement()
 }
 
 
@@ -497,14 +498,9 @@ function parseSupply(rows) {
   state.leadTimes = {}     // per-vendor lead time samples (weeks)
 
   rows.forEach(r => {
-    const sku = Object.keys(r).find(k =>
-      k.replace(/\s+/g,"").toLowerCase() === "inventoryid"
-    ) ? r[Object.keys(r).find(k =>
-      k.replace(/\s+/g,"").toLowerCase() === "inventoryid"
-    )] : null
+  const sku = String(r["ID"] || "").trim()
+  if (!sku) return
 
-
-    if (!sku) return
 
     const vendor = String(r["Vendor"] || "").trim() || "Vendor not provided"
 
@@ -562,7 +558,7 @@ function parseSupply(rows) {
       s.vendor = state.supply[s.sku][0].vendor
     }
   })
-
+  
   if (state.mode === "management") renderManagement()
 }
 
@@ -1055,14 +1051,10 @@ function exportManagementPdf() {
     // =========================
     // DECISION / RISK
     // =========================
-    const decisionLines = recommendation(s)
+    writeLine(s._decision.recommendationText
       .replace(/<br\s*\/?>/gi, "\n")
-      .replace(/<[^>]+>/g, "")
-      .split("\n")
-      .map(l => l.trim())
-      .filter(Boolean)
+      .replace(/<[^>]+>/g, ""))
 
-    decisionLines.forEach(l => writeLine(l))
 
     // =========================
     // DIVIDER
