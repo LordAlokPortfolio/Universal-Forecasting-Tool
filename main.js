@@ -289,7 +289,7 @@ count dated ≤ today (future dates are ignored).
   // DECISION LOGIC
   // =========================
   if (leadTimeDemand !== null && onHand < leadTimeDemand) {
-    decision = "PLACE ORDER"
+    decision = "PLACE ORDER "
     reason = "Current stock will not cover supplier lead time demand."
   } else if (leadTimeDemand !== null) {
     decision = "NO ADDITIONAL ORDER REQUIRED (open PO already in transit)"
@@ -304,10 +304,10 @@ count dated ≤ today (future dates are ignored).
   // =========================
   const narrative =
     onHand === 0
-      ? "Since the last cycle count, there has been no inventory on hand and the purchase order is still open."
+      ? " Since the last cycle count, there has been no inventory on hand and the purchase order is still open."
       : onHand < leadTimeDemand
-        ? "Since the last cycle count, current inventory will be consumed before the next receipt arrives."
-        : "Since the last cycle count, inventory is sufficient to cover demand through the supplier’s lead time."
+        ? " Since the last cycle count, current inventory will be consumed before the next receipt arrives."
+        : " Since the last cycle count, inventory is sufficient to cover demand through the supplier's lead time."
 
   // =========================
   // OUTPUT
@@ -315,14 +315,14 @@ count dated ≤ today (future dates are ignored).
   return `
 <strong>${decision}</strong><br>
 Right now we have <strong>${onHand} units</strong> on hand.<br>
-Recent usage: <strong>${dailyUsage.toFixed(2)} units/day</strong>
+ Recent usage: <strong>${dailyUsage.toFixed(2)} units/day</strong>
 (~${Math.round(weeklyUsage)} per week).<br>
-Observed supplier lead time: <strong>${leadDays !== null ? `${leadDays} working days` : "Insufficient history"}</strong> (${vendor}).<br>
-Expected consumption during lead time: <strong>${leadTimeDemand !== null ? `~${Math.round(leadTimeDemand)} units` : "N/A"}</strong>.<br>
+ Observed supplier lead time: <strong>${leadDays !== null ? `${leadDays} working days` : "Insufficient history"}</strong> (${vendor}).<br>
+ Expected consumption during lead time: <strong>${leadTimeDemand !== null ? `~${Math.round(leadTimeDemand)} units` : "N/A"}</strong>.<br>
 <strong>${narrative}</strong><br>
-<strong>24-month planning view:</strong> expected consumption
+<strong> 24-month planning view:</strong> expected consumption
 <strong>~${Math.round(plannedQty24m)} units</strong> over the next 24 months.<br>
-<strong>Decision basis:</strong> ${reason}
+<strong> Decision basis:</strong> ${reason}
 `.trim()
 }
 
