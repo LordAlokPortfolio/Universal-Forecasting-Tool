@@ -147,6 +147,8 @@ function patternLabel(s){
   return"Stable demand"
 }
 
+let decision = ""
+let reason = ""
 
 function recommendation(s) {
   // Guard: no demand
