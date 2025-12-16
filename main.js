@@ -147,10 +147,11 @@ function patternLabel(s){
   return"Stable demand"
 }
 
-let decision = ""
-let reason = ""
+
 
 function recommendation(s) {
+  let decision = ""
+  let reason = ""
   // Guard: no demand
   if (!s.history || s.history.length === 0 || s.avgPerWorkingDay <= 0) {
     return "NO ACTION: No meaningful consumption history."
@@ -421,11 +422,12 @@ function parseSupply(rows) {
   state.leadTimes = {}     // per-vendor lead time samples (weeks)
 
   rows.forEach(r => {
-    const sku =
-      r["INVENTORY ID"] ||
-      r["Inventory ID"] ||
-      r["InventoryId"] ||
-      r["InventoryID"]
+    const sku = Object.keys(r).find(k =>
+      k.replace(/\s+/g,"").toLowerCase() === "inventoryid"
+    ) ? r[Object.keys(r).find(k =>
+      k.replace(/\s+/g,"").toLowerCase() === "inventoryid"
+    )] : null
+
 
     if (!sku) return
 
