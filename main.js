@@ -227,6 +227,7 @@ function patternLabel(s){
 function recommendation(s) {
   let decision = ""
   let reason = ""
+
   // Guard: no demand
   if (!s.history || s.history.length === 0 || s.avgPerWorkingDay <= 0) {
     return "NO ACTION: No meaningful consumption history."
@@ -257,19 +258,19 @@ count dated ≤ today (future dates are ignored).
   const onHand = s.currentStock
 
   // =========================
-// OBSERVED LEAD TIME (SKU RECEIPTS ONLY)
-// =========================
-const receivedLT = (state.supply[s.sku] || [])
-  .filter(x => !x.open && x.leadWeeks)
+  // OBSERVED LEAD TIME (SKU RECEIPTS ONLY)
+  // =========================
+  const receivedLT = (state.supply[s.sku] || [])
+    .filter(x => !x.open && x.leadWeeks)
 
-const leadWeeks =
-  receivedLT.length > 0
-    ? median(receivedLT.map(x => x.leadWeeks))
+  const leadWeeks =
+    receivedLT.length > 0
+      ? median(receivedLT.map(x => x.leadWeeks))
+      : null
+
+  const leadDays = leadWeeks !== null
+    ? Math.round(leadWeeks * 7)
     : null
-
-const leadDays = leadWeeks !== null
-  ? Math.round(leadWeeks * 7)
-  : null
 
   // =========================
   // DEMAND
@@ -284,10 +285,9 @@ const leadDays = leadWeeks !== null
   const WORKING_DAYS_PER_YEAR = 260
   const plannedQty24m = dailyUsage * WORKING_DAYS_PER_YEAR * 2
 
-/* =========================
-   FIX 1 — recommendation(): DECISION GUARD
-   ========================= */
-
+  // =========================
+  // DECISION LOGIC
+  // =========================
   if (leadTimeDemand !== null && onHand < leadTimeDemand) {
     decision = "PLACE ORDER"
     reason = "Current stock will not cover supplier lead time demand."
@@ -299,20 +299,19 @@ const leadDays = leadWeeks !== null
     reason = "Supplier lead time cannot be determined from receipt history."
   }
 
-
+  // =========================
+  // NARRATIVE SENTENCE (PLANNER LANGUAGE)
+  // =========================
+  const narrative =
+    onHand === 0
+      ? "Since the last cycle count, there has been no inventory on hand and the purchase order is still open."
+      : onHand < leadTimeDemand
+        ? "Since the last cycle count, current inventory will be consumed before the next receipt arrives."
+        : "Since the last cycle count, inventory is sufficient to cover demand through the supplier’s lead time."
 
   // =========================
-  // LEAD-TIME COVERAGE (NEW, CLEAR)
+  // OUTPUT
   // =========================
-  let coverageSentence = "Lead-time coverage: Insufficient data."
-  if (dailyUsage > 0 && leadDays > 0) {
-    const daysOfCover = onHand / dailyUsage
-    coverageSentence =
-      daysOfCover >= leadDays
-        ? "Lead-time coverage: Inventory covers supplier lead time demand."
-        : "Lead-time coverage: Inventory does NOT cover supplier lead time demand."
-  }
-
   return `
 <strong>${decision}</strong><br>
 Right now we have <strong>${onHand} units</strong> on hand.<br>
@@ -320,7 +319,7 @@ Recent usage: <strong>${dailyUsage.toFixed(2)} units/day</strong>
 (~${Math.round(weeklyUsage)} per week).<br>
 Observed supplier lead time: <strong>${leadDays !== null ? `${leadDays} working days` : "Insufficient history"}</strong> (${vendor}).<br>
 Expected consumption during lead time: <strong>${leadTimeDemand !== null ? `~${Math.round(leadTimeDemand)} units` : "N/A"}</strong>.<br>
-<strong>${coverageSentence}</strong><br>
+<strong>${narrative}</strong><br>
 <strong>24-month planning view:</strong> expected consumption
 <strong>~${Math.round(plannedQty24m)} units</strong> over the next 24 months.<br>
 <strong>Decision basis:</strong> ${reason}
