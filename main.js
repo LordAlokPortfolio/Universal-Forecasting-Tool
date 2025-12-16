@@ -243,7 +243,7 @@ const leadDays = leadWeeks !== null
 Right now we have <strong>${onHand} units</strong> on hand.<br>
 Recent usage: <strong>${dailyUsage.toFixed(2)} units/day</strong>
 (~${Math.round(weeklyUsage)} per week).<br>
-Observed supplier lead time: <strong>${leadDays} working days</strong> (${vendor}).<br>
+Observed supplier lead time: <strong>${leadDays !== null ? `${leadDays} working days` : "Insufficient history"}</strong> (${vendor}).<br>
 Expected consumption during lead time: <strong>~${Math.round(leadTimeDemand)} units</strong>.<br>
 <strong>${coverageSentence}</strong><br>
 <strong>24-month planning view:</strong> expected consumption
