@@ -1,4 +1,42 @@
 ﻿"use strict"
+function parseUniversalDate(v) {
+  if (v === null || v === undefined || v === "") return null
+
+  // Excel serial number
+  if (typeof v === "number" || /^\d{5,6}$/.test(String(v))) {
+    const n = Number(v)
+    if (!isNaN(n)) return new Date((n - 25569) * 86400 * 1000)
+  }
+
+  const s = String(v).trim()
+
+  // ISO
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    const d = new Date(s + "T00:00:00")
+    return isNaN(d) ? null : d
+  }
+
+  // DD/MM/YYYY or MM/DD/YYYY
+  const m1 = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/)
+  if (m1) {
+    let d = Number(m1[1])
+    let m = Number(m1[2]) - 1
+    let y = Number(m1[3])
+    if (y < 100) y += 2000
+
+    // Try both interpretations safely
+    const d1 = new Date(y, m, d)
+    const d2 = new Date(y, d - 1, m + 1)
+
+    if (!isNaN(d1)) return d1
+    if (!isNaN(d2)) return d2
+  }
+
+  // Fallback (last resort)
+  const d = new Date(s.replace(/-/g, "/"))
+  return isNaN(d) ? null : d
+}
+
 function renderAbout(){
   const el = document.getElementById("about-view")
   if (!el) return
@@ -438,8 +476,8 @@ function parseSupply(rows) {
 
     if (!poDateRaw) return
 
-    const poDate = new Date(poDateRaw)
-    if (isNaN(poDate)) return
+    const poDate = parseUniversalDate(poDateRaw)
+    if (!poDate) return
 
     // -----------------------------
     // OPEN ORDER (NO RECEIVEDATE)
@@ -458,8 +496,8 @@ function parseSupply(rows) {
     // -----------------------------
     // RECEIVED ORDER → LEAD TIME
     // -----------------------------
-    const recvDate = new Date(recvDateRaw)
-    if (isNaN(recvDate)) return
+    const recvDate = parseUniversalDate(recvDateRaw)
+    if (!recvDate) return
 
     const leadDays = daysBetween(poDate, recvDate)
     if (leadDays === null || leadDays <= 0) return
