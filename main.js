@@ -834,25 +834,39 @@ const ABOUT_TEXT = document.getElementById("about-view")?.innerHTML || ""
 
 
 /* =========================
-   PDF GENERATOR
+   PDF GENERATOR (UI-ALIGNED, WRAP-SAFE)
    ========================= */
 
 function exportManagementPdf() {
   const { jsPDF } = window.jspdf
   const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" })
 
-  let y = 40
-  const pageHeight = doc.internal.pageSize.height
   const margin = 40
-  const line = 14
+  const maxWidth = 520
+  const lineHeight = 14
+  const pageHeight = doc.internal.pageSize.height
 
-  const ensureSpace = linesNeeded => {
-    if (y + linesNeeded * line > pageHeight - 40) {
+  let y = 40
+
+  const ensureSpace = lines => {
+    if (y + lines * lineHeight > pageHeight - 40) {
       doc.addPage()
       y = 40
     }
   }
 
+  const writeLine = text => {
+    const wrapped = doc.splitTextToSize(sanitizeText(text), maxWidth)
+    ensureSpace(wrapped.length)
+    wrapped.forEach(l => {
+      doc.text(l, margin, y)
+      y += lineHeight
+    })
+  }
+
+  // =========================
+  // HEADER
+  // =========================
   doc.setFont("Helvetica", "bold")
   doc.setFontSize(14)
   doc.text("Universal Forecasting Tool — Management Summary", margin, y)
@@ -861,97 +875,93 @@ function exportManagementPdf() {
   doc.setFontSize(9)
   doc.setFont("Helvetica", "normal")
   doc.text(`Generated: ${new Date().toLocaleDateString()}`, margin, y)
-  y += 20
+  y += 24
 
+  // =========================
+  // SORT SAME AS UI
+  // =========================
   const items = [...state.demand].sort((a, b) =>
     a.class.localeCompare(b.class) ||
-    b.avgPerWorkingDay - a.avgPerWorkingDay
+    b.avgPerWorkingDay - a.avgPerWorkingDay ||
+    a.sku.localeCompare(b.sku)
   )
 
   items.forEach(s => {
-    ensureSpace(6)
+    ensureSpace(8)
 
-    /* =========================
-       SKU HEADER (same as UI)
-       ========================= */
+    // =========================
+    // SKU HEADER
+    // =========================
     doc.setFont("Helvetica", "bold")
-    doc.text(
-      `${s.sku} | Class ${s.class} | ${s.avgPerWorkingDay.toFixed(2)} units/day`,
-      margin,
-      y
-    )
-    y += line + 4
+    writeLine(`${s.sku} | Class ${s.class} | ${s.avgPerWorkingDay.toFixed(2)} units/day`)
+    y += 4
 
     doc.setFont("Helvetica", "normal")
 
-    /* =========================
-       CORE METRICS (same fields UI uses)
-       ========================= */
-    const baseLines = [
-      `Description: ${s.desc || "Not provided"}`,
-      `Vendor: ${s.vendor || "Not provided"}`,
-      `Usage (30/60/90): ${s.window30.adjusted.toFixed(2)} / ${s.window60.adjusted.toFixed(2)} / ${s.window90.adjusted.toFixed(2)}`,
-      `Planning rate (90d): ${s.avgPerWorkingDay.toFixed(2)} / day (${(s.avgPerWorkingDay * 5).toFixed(1)} / week)`
-    ]
+    // =========================
+    // CORE METRICS (MATCH UI)
+    // =========================
+    writeLine(`Description: ${s.desc || "Not provided"}`)
+    writeLine(`Vendor: ${s.vendor || "Not provided"}`)
+    writeLine(
+      `Usage (30/60/90): ` +
+      `${s.window30.adjusted.toFixed(2)} / ` +
+      `${s.window60.adjusted.toFixed(2)} / ` +
+      `${s.window90.adjusted.toFixed(2)}`
+    )
 
-    baseLines.forEach(t => {
-      ensureSpace(1)
-      doc.text(sanitizeText(t), margin, y, { maxWidth: 520 })
-      y += line
-    })
+    writeLine(
+      `Planning rate (90d): ` +
+      `${s.avgPerWorkingDay.toFixed(2)} / day ` +
+      `(${(s.avgPerWorkingDay * 5).toFixed(1)} / week)`
+    )
 
-    /* =========================
-       SUPPLY (from parsed supply state)
-       ========================= */
+    // =========================
+    // SUPPLY (SAME LOGIC AS UI)
+    // =========================
     const supply = state.supply[s.sku] || []
-    const received = supply.filter(x => !x.open)
-    const open = supply.filter(x => x.open)
+    const openOrder = supply.find(x => x.open)
+    const received = supply.filter(x => !x.open && x.leadWeeks)
 
     const leadWeeks =
-      received.length
-        ? (received.reduce((a, b) => a + b.leadWeeks, 0) / received.length)
+      received.length > 0
+        ? median(received.map(x => x.leadWeeks))
         : null
 
-    const nextReceipt =
-      open.length
-        ? `Open order (PO date ${new Date(open[0].poDate).toLocaleDateString()})`
-        : "None"
-
-    const supplyLines = [
+    writeLine(
       `Observed supplier lead time: ${
-        leadWeeks ? `${(leadWeeks * 7).toFixed(0)} working days (${s.vendor})` : "Insufficient history"
-      }`,
-      `Next receipt: ${nextReceipt}`
-    ]
+        leadWeeks
+          ? `${Math.round(leadWeeks * 7)} working days (${s.vendor})`
+          : "Insufficient history"
+      }`
+    )
 
-    supplyLines.forEach(t => {
-      ensureSpace(1)
-      doc.text(sanitizeText(t), margin, y, { maxWidth: 520 })
-      y += line
-    })
+    writeLine(
+      `Next receipt: ${
+        openOrder
+          ? `Open order (PO date ${formatESTDate(openOrder.poDate)})`
+          : "None"
+      }`
+    )
 
-    /* =========================
-       DECISION / RISK (same as UI recommendation)
-       ========================= */
-    const decisionLines = sanitizeText(
-      recommendation(s)
-        .replace(/<br\s*\/?>/gi, "\n")
-        .replace(/<[^>]+>/g, "")
-    ).split("\n")
+    // =========================
+    // DECISION / RISK
+    // =========================
+    const decisionLines = recommendation(s)
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<[^>]+>/g, "")
+      .split("\n")
+      .map(l => l.trim())
+      .filter(Boolean)
 
-    decisionLines.forEach(t => {
-      if (!t.trim()) return
-      ensureSpace(1)
-      doc.text(t.trim(), margin, y, { maxWidth: 520 })
-      y += line
-    })
+    decisionLines.forEach(l => writeLine(l))
 
-    /* =========================
-       SECTION DIVIDER
-       ========================= */
-    y += 10
+    // =========================
+    // DIVIDER
+    // =========================
+    y += 8
     doc.setDrawColor(55, 65, 81)
-    doc.line(margin, y, margin + 520, y)
+    doc.line(margin, y, margin + maxWidth, y)
     y += 16
   })
 
@@ -965,3 +975,4 @@ document.getElementById("btn-export")?.addEventListener("click", () => {
   }
   exportManagementPdf()
 })
+
