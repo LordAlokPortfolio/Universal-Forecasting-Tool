@@ -179,21 +179,26 @@ count dated ≤ today (future dates are ignored).
   const onHand = s.currentStock
 
   // =========================
-  // OBSERVED LEAD TIME
-  // =========================
-  let leadWeeks = state.leadTimes[vendor]?.length
-    ? median(state.leadTimes[vendor])
-    : 0
+// OBSERVED LEAD TIME (SKU RECEIPTS ONLY)
+// =========================
+const receivedLT = (state.supply[s.sku] || [])
+  .filter(x => !x.open && x.leadWeeks)
 
-  if (!leadWeeks || leadWeeks <= 0) leadWeeks = 2
-  const leadDays = Math.round(leadWeeks * 7)
+const leadWeeks =
+  receivedLT.length > 0
+    ? median(receivedLT.map(x => x.leadWeeks))
+    : null
+
+const leadDays = leadWeeks !== null
+  ? Math.round(leadWeeks * 7)
+  : null
 
   // =========================
   // DEMAND
   // =========================
   const dailyUsage = s.avgPerWorkingDay
   const weeklyUsage = dailyUsage * 5
-  const leadTimeDemand = dailyUsage * leadDays
+  const leadTimeDemand = leadDays !== null ? dailyUsage * leadDays : null
 
   // =========================
   // 24-MONTH PLANNING
@@ -201,19 +206,21 @@ count dated ≤ today (future dates are ignored).
   const WORKING_DAYS_PER_YEAR = 260
   const plannedQty24m = dailyUsage * WORKING_DAYS_PER_YEAR * 2
 
-  // =========================
-  // DECISION
-  // =========================
-  let decision
-  let reason
+/* =========================
+   FIX 1 — recommendation(): DECISION GUARD
+   ========================= */
 
-  if (onHand < leadTimeDemand) {
+  if (leadTimeDemand !== null && onHand < leadTimeDemand) {
     decision = "PLACE ORDER"
     reason = "Current stock will not cover supplier lead time demand."
-  } else {
+  } else if (leadTimeDemand !== null) {
     decision = "NO ADDITIONAL ORDER REQUIRED (open PO already in transit)"
     reason = "Current stock and committed supply are sufficient to cover supplier lead time demand."
+  } else {
+    decision = "REVIEW REQUIRED"
+    reason = "Supplier lead time cannot be determined from receipt history."
   }
+
 
 
   // =========================
@@ -535,11 +542,14 @@ function renderManagement(){
     const dailyUsage = getPlanningUsage(s)
     const weeklyUsage = dailyUsage * 5
 
-    const trueLead = state.leadTimes[vendor]
-      ? median(state.leadTimes[vendor])
-      : 0
+    const received = (state.supply[s.sku] || []).filter(x => !x.open && x.leadWeeks)
+    const trueLead =
+      received.length > 0
+        ? median(received.map(x => x.leadWeeks))
+        : null
 
-    const monthsCover = trueLead ? (trueLead / 4.33).toFixed(1) : "—"
+
+    const monthsCover = trueLead !== null ? (trueLead / 4.33).toFixed(1) : "—"
     // Next receipt (EST date only, no time)
     const supplyEvents = state.supply[s.sku] || []
 
@@ -558,7 +568,7 @@ function renderManagement(){
 
     // Lead-time coverage (clear wording)
     let coverageText = "Lead-time coverage: Insufficient data."
-    if (dailyUsage > 0 && trueLead > 0) {
+    if (dailyUsage > 0 && trueLead !== null) {
       const daysOfCover = s.currentStock / dailyUsage
       const leadDays = trueLead * 7
       coverageText =
@@ -566,6 +576,7 @@ function renderManagement(){
           ? "Lead-time coverage: Inventory covers supplier lead time demand."
           : "Lead-time coverage: Inventory does NOT cover supplier lead time demand."
     }
+
 
 
     r.innerHTML += `
@@ -600,13 +611,13 @@ function renderManagement(){
             ">
           <br>
           Lead time:
-          <input class="inline-edit" value="${trueLead.toFixed(2)}"
+          <input class="inline-edit" value="${(trueLead !== null ? trueLead.toFixed(2) : "—")}"
             onchange="
               state.leadTimes['${vendor}']=[Number(this.value)]
               renderManagement()
             "> weeks
           <br>
-          True lead time: ${trueLead.toFixed(2)} weeks
+          True lead time: ${(trueLead !== null ? trueLead.toFixed(2) : "—")} weeks
           (~${monthsCover} months)
           <br>
           Next receipt: ${nextReceipt}
@@ -990,4 +1001,6 @@ document.getElementById("btn-export")?.addEventListener("click", () => {
   }
   exportManagementPdf()
 })
+
+
 
