@@ -387,29 +387,71 @@ series.push({
    SUPPLY PARSE
    ========================= */
 
-function parseSupply(rows){
-  rows.forEach(r=>{
-    const sku = r["Inventory ID"] || r["INVENTORY ID"] || r["InventoryId"] || r["InventoryID"]
+function parseSupply(rows) {
+  state.supply = {}        // per-SKU supply events (received + open)
+  state.leadTimes = {}     // per-vendor lead time samples (weeks)
+
+  rows.forEach(r => {
+    const sku =
+      r["INVENTORY ID"] ||
+      r["Inventory ID"] ||
+      r["InventoryId"] ||
+      r["InventoryID"]
+
     if (!sku) return
 
     const vendor = String(r["Vendor"] || "").trim() || "Vendor not provided"
-    const poDate = r["PO Date"]
-    const recvDate = r["PO ReceiveDate"]
+
+    const poDateRaw = r["PO DATE"]
+    const recvDateRaw = r["PO RECEIVEDATE"]
+
+    if (!poDateRaw) return
+
+    const poDate = new Date(poDateRaw)
+    if (isNaN(poDate)) return
+
+    // -----------------------------
+    // OPEN ORDER (NO RECEIVEDATE)
+    // -----------------------------
+    if (!recvDateRaw || String(recvDateRaw).trim() === "") {
+      if (!state.supply[sku]) state.supply[sku] = []
+      state.supply[sku].push({
+        vendor,
+        poDate: poDate,
+        recvDate: null,
+        open: true
+      })
+      return
+    }
+
+    // -----------------------------
+    // RECEIVED ORDER → LEAD TIME
+    // -----------------------------
+    const recvDate = new Date(recvDateRaw)
+    if (isNaN(recvDate)) return
 
     const leadDays = daysBetween(poDate, recvDate)
-    if (leadDays === null || leadDays < 0) return
+    if (leadDays === null || leadDays <= 0) return
 
     const leadWeeks = leadDays / 7
 
     if (!state.supply[sku]) state.supply[sku] = []
-    state.supply[sku].push({ vendor, poDate, recvDate, leadWeeks })
+    state.supply[sku].push({
+      vendor,
+      poDate: poDate,
+      recvDate: recvDate,
+      leadWeeks,
+      open: false
+    })
 
     if (!state.leadTimes[vendor]) state.leadTimes[vendor] = []
     state.leadTimes[vendor].push(leadWeeks)
   })
 
-  // backfill vendor into demand if missing
-  state.demand.forEach(s=>{
+  // ---------------------------------
+  // BACKFILL VENDOR INTO DEMAND SKUs
+  // ---------------------------------
+  state.demand.forEach(s => {
     if (!s.vendor && state.supply[s.sku]?.length) {
       s.vendor = state.supply[s.sku][0].vendor
     }
@@ -417,6 +459,7 @@ function parseSupply(rows){
 
   if (state.mode === "management") renderManagement()
 }
+
 
 
 /* =========================
