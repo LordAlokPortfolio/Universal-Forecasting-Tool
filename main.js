@@ -211,9 +211,10 @@ count dated ≤ today (future dates are ignored).
     decision = "PLACE ORDER"
     reason = "Current stock will not cover supplier lead time demand."
   } else {
-    decision = "NO IMMEDIATE ORDER"
-    reason = "Current stock is sufficient to cover supplier lead time demand."
+    decision = "NO ADDITIONAL ORDER REQUIRED (open PO already in transit)"
+    reason = "Current stock and committed supply are sufficient to cover supplier lead time demand."
   }
+
 
   // =========================
   // LEAD-TIME COVERAGE (NEW, CLEAR)
@@ -541,14 +542,19 @@ function renderManagement(){
     const monthsCover = trueLead ? (trueLead / 4.33).toFixed(1) : "—"
     // Next receipt (EST date only, no time)
     const supplyEvents = state.supply[s.sku] || []
-    const openOrder = supplyEvents.find(x => x.open)
-    const receivedOrder = supplyEvents.find(x => !x.open && x.recvDate)
+
+    const today = new Date()
+    today.setHours(0,0,0,0)
+
+    // latest OPEN PO DATE ≤ today
+    const openOrder = supplyEvents
+      .filter(x => x.open && x.poDate && x.poDate <= today)
+      .sort((a,b) => b.poDate - a.poDate)[0]
 
     const nextReceipt = openOrder
       ? formatESTDate(openOrder.poDate)
-      : receivedOrder
-        ? formatESTDate(receivedOrder.recvDate)
-        : "None"
+      : "None"
+
 
     // Lead-time coverage (clear wording)
     let coverageText = "Lead-time coverage: Insufficient data."
@@ -920,8 +926,17 @@ function exportManagementPdf() {
     // SUPPLY (SAME LOGIC AS UI)
     // =========================
     const supply = state.supply[s.sku] || []
-    const openOrder = supply.find(x => x.open)
+
+    const today = new Date()
+    today.setHours(0,0,0,0)
+
+    // latest OPEN PO DATE ≤ today
+    const openOrder = supply
+      .filter(x => x.open && x.poDate && x.poDate <= today)
+      .sort((a,b) => b.poDate - a.poDate)[0]
+
     const received = supply.filter(x => !x.open && x.leadWeeks)
+
 
     const leadWeeks =
       received.length > 0
