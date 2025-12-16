@@ -18,6 +18,17 @@ function median(arr){
   return s.length % 2 ? s[m] : (s[m-1] + s[m]) / 2
 }
 
+function formatESTDate(date) {
+  if (!(date instanceof Date)) return "None"
+  return date.toLocaleDateString("en-CA", {
+    timeZone: "America/Toronto",
+    year: "numeric",
+    month: "short",
+    day: "2-digit"
+  })
+}
+
+
 /* =========================
    CONSTANTS
    ========================= */
@@ -136,7 +147,8 @@ function patternLabel(s){
   return"Stable demand"
 }
 
-function recommendation(s){
+
+function recommendation(s) {
   // Guard: no demand
   if (!s.history || s.history.length === 0 || s.avgPerWorkingDay <= 0) {
     return "NO ACTION: No meaningful consumption history."
@@ -144,33 +156,30 @@ function recommendation(s){
 
   const vendor = s.vendor || "supplier"
 
-// =========================
-// CURRENT STOCK (LATEST ≤ TODAY)
-// =========================
-const today = new Date()
-today.setHours(0,0,0,0)
+  // =========================
+  // CURRENT STOCK (LATEST ≤ TODAY)
+  // =========================
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
 
-// Expect currentStock to be an object keyed by ISO date if available,
-// otherwise reject future-dated values safely
-if (
-  s.currentStock === null ||
-  isNaN(s.currentStock) ||
-  (s.currentStockDate && new Date(s.currentStockDate) > today)
-) {
-  return `
+  if (
+    s.currentStock === null ||
+    isNaN(s.currentStock) ||
+    (s.currentStockDate && new Date(s.currentStockDate) > today)
+  ) {
+    return `
 <strong>INSUFFICIENT INVENTORY VISIBILITY</strong><br>
 Latest usable cycle count must be dated <strong>on or before today</strong>.<br>
 Recent usage: <strong>${s.avgPerWorkingDay.toFixed(2)} units/day</strong>.<br>
 <strong>Action:</strong> Ensure the cycle-count CSV uses the most recent
 count dated ≤ today (future dates are ignored).
 `.trim()
-}
+  }
 
-const onHand = s.currentStock
-
+  const onHand = s.currentStock
 
   // =========================
-  // OBSERVED LEAD TIME (PRIMARY)
+  // OBSERVED LEAD TIME
   // =========================
   let leadWeeks = state.leadTimes[vendor]?.length
     ? median(state.leadTimes[vendor])
@@ -180,18 +189,17 @@ const onHand = s.currentStock
   const leadDays = Math.round(leadWeeks * 7)
 
   // =========================
-  // DEMAND (EXECUTION)
+  // DEMAND
   // =========================
   const dailyUsage = s.avgPerWorkingDay
   const weeklyUsage = dailyUsage * 5
   const leadTimeDemand = dailyUsage * leadDays
 
   // =========================
-  // PLANNING (0–24 MONTHS, TIME-BASED)
+  // 24-MONTH PLANNING
   // =========================
   const WORKING_DAYS_PER_YEAR = 260
-  const planningDays24m = WORKING_DAYS_PER_YEAR * 2
-  const plannedQty24m = dailyUsage * planningDays24m
+  const plannedQty24m = dailyUsage * WORKING_DAYS_PER_YEAR * 2
 
   // =========================
   // DECISION
@@ -201,10 +209,22 @@ const onHand = s.currentStock
 
   if (onHand < leadTimeDemand) {
     decision = "PLACE ORDER"
-    reason = "Current stock will not cover expected demand during supplier lead time"
+    reason = "Current stock will not cover supplier lead time demand."
   } else {
-    decision = "NO IMMEDIATE ORDER: "
-    reason = "Current stock is sufficient to cover supplier lead time demand"
+    decision = "NO IMMEDIATE ORDER"
+    reason = "Current stock is sufficient to cover supplier lead time demand."
+  }
+
+  // =========================
+  // LEAD-TIME COVERAGE (NEW, CLEAR)
+  // =========================
+  let coverageSentence = "Lead-time coverage: Insufficient data."
+  if (dailyUsage > 0 && leadDays > 0) {
+    const daysOfCover = onHand / dailyUsage
+    coverageSentence =
+      daysOfCover >= leadDays
+        ? "Lead-time coverage: Inventory covers supplier lead time demand."
+        : "Lead-time coverage: Inventory does NOT cover supplier lead time demand."
   }
 
   return `
@@ -214,13 +234,12 @@ Recent usage: <strong>${dailyUsage.toFixed(2)} units/day</strong>
 (~${Math.round(weeklyUsage)} per week).<br>
 Observed supplier lead time: <strong>${leadDays} working days</strong> (${vendor}).<br>
 Expected consumption during lead time: <strong>~${Math.round(leadTimeDemand)} units</strong>.<br>
+<strong>${coverageSentence}</strong><br>
 <strong>24-month planning view:</strong> expected consumption
 <strong>~${Math.round(plannedQty24m)} units</strong> over the next 24 months.<br>
-<strong>Decision basis:</strong> ${reason}.
+<strong>Decision basis:</strong> ${reason}
 `.trim()
 }
-
-
 
 
 
@@ -520,12 +539,28 @@ function renderManagement(){
       : 0
 
     const monthsCover = trueLead ? (trueLead / 4.33).toFixed(1) : "—"
-    const nextReceipt = state.supply[s.sku]?.[0]?.recvDate || "None"
+    // Next receipt (EST date only, no time)
+    const supplyEvents = state.supply[s.sku] || []
+    const openOrder = supplyEvents.find(x => x.open)
+    const receivedOrder = supplyEvents.find(x => !x.open && x.recvDate)
 
-    let runoutText = "No usage"
+    const nextReceipt = openOrder
+      ? formatESTDate(openOrder.poDate)
+      : receivedOrder
+        ? formatESTDate(receivedOrder.recvDate)
+        : "None"
+
+    // Lead-time coverage (clear wording)
+    let coverageText = "Lead-time coverage: Insufficient data."
     if (dailyUsage > 0 && trueLead > 0) {
-      runoutText = `~${Math.round(trueLead * 7)} days after order`
+      const daysOfCover = s.currentStock / dailyUsage
+      const leadDays = trueLead * 7
+      coverageText =
+        daysOfCover >= leadDays
+          ? "Lead-time coverage: Inventory covers supplier lead time demand."
+          : "Lead-time coverage: Inventory does NOT cover supplier lead time demand."
     }
+
 
     r.innerHTML += `
       <div class="card card-${abc}">
@@ -572,7 +607,7 @@ function renderManagement(){
 
           <br><br>
           <strong>Risk</strong><br>
-          Run-out: ${runoutText}
+          ${coverageText}
         </div>
 
         <div class="card-footer">
@@ -811,6 +846,13 @@ function exportManagementPdf() {
   const margin = 40
   const line = 14
 
+  const ensureSpace = linesNeeded => {
+    if (y + linesNeeded * line > pageHeight - 40) {
+      doc.addPage()
+      y = 40
+    }
+  }
+
   doc.setFont("Helvetica", "bold")
   doc.setFontSize(14)
   doc.text("Universal Forecasting Tool — Management Summary", margin, y)
@@ -827,61 +869,87 @@ function exportManagementPdf() {
   )
 
   items.forEach(s => {
-    const ensureSpace = linesNeeded => {
-      if (y + linesNeeded * line > pageHeight - 40) {
-        doc.addPage()
-        y = 40
-      }
-    }
+    ensureSpace(6)
 
-    // =========================
-    // SKU HEADER
-    // =========================
-    const header =
-      `${s.sku} | Class ${s.class} | ${s.avgPerWorkingDay.toFixed(2)} units/day`
-
-    ensureSpace(3)
+    /* =========================
+       SKU HEADER (same as UI)
+       ========================= */
     doc.setFont("Helvetica", "bold")
-    doc.text(header, margin, y)
+    doc.text(
+      `${s.sku} | Class ${s.class} | ${s.avgPerWorkingDay.toFixed(2)} units/day`,
+      margin,
+      y
+    )
     y += line + 4
 
     doc.setFont("Helvetica", "normal")
 
-    // =========================
-    // BODY
-    // =========================
-    const body = [
+    /* =========================
+       CORE METRICS (same fields UI uses)
+       ========================= */
+    const baseLines = [
       `Description: ${s.desc || "Not provided"}`,
       `Vendor: ${s.vendor || "Not provided"}`,
-      `Usage (30/60/90): ${s.window30.adjusted.toFixed(2)} / ${s.window60.adjusted.toFixed(2)} / ${s.window90.adjusted.toFixed(2)}`
+      `Usage (30/60/90): ${s.window30.adjusted.toFixed(2)} / ${s.window60.adjusted.toFixed(2)} / ${s.window90.adjusted.toFixed(2)}`,
+      `Planning rate (90d): ${s.avgPerWorkingDay.toFixed(2)} / day (${(s.avgPerWorkingDay * 5).toFixed(1)} / week)`
     ]
 
-    body.forEach(t => {
+    baseLines.forEach(t => {
       ensureSpace(1)
       doc.text(sanitizeText(t), margin, y, { maxWidth: 520 })
       y += line
     })
 
-    // =========================
-    // RECOMMENDATION
-    // =========================
-    const recLines = sanitizeText(
+    /* =========================
+       SUPPLY (from parsed supply state)
+       ========================= */
+    const supply = state.supply[s.sku] || []
+    const received = supply.filter(x => !x.open)
+    const open = supply.filter(x => x.open)
+
+    const leadWeeks =
+      received.length
+        ? (received.reduce((a, b) => a + b.leadWeeks, 0) / received.length)
+        : null
+
+    const nextReceipt =
+      open.length
+        ? `Open order (PO date ${new Date(open[0].poDate).toLocaleDateString()})`
+        : "None"
+
+    const supplyLines = [
+      `Observed supplier lead time: ${
+        leadWeeks ? `${(leadWeeks * 7).toFixed(0)} working days (${s.vendor})` : "Insufficient history"
+      }`,
+      `Next receipt: ${nextReceipt}`
+    ]
+
+    supplyLines.forEach(t => {
+      ensureSpace(1)
+      doc.text(sanitizeText(t), margin, y, { maxWidth: 520 })
+      y += line
+    })
+
+    /* =========================
+       DECISION / RISK (same as UI recommendation)
+       ========================= */
+    const decisionLines = sanitizeText(
       recommendation(s)
         .replace(/<br\s*\/?>/gi, "\n")
         .replace(/<[^>]+>/g, "")
     ).split("\n")
 
-    ensureSpace(recLines.length + 2)
-
-    recLines.forEach(t => {
+    decisionLines.forEach(t => {
+      if (!t.trim()) return
+      ensureSpace(1)
       doc.text(t.trim(), margin, y, { maxWidth: 520 })
       y += line
     })
 
-    // =========================
-    // SECTION DIVIDER
-    // =========================
-    y += 12
+    /* =========================
+       SECTION DIVIDER
+       ========================= */
+    y += 10
     doc.setDrawColor(55, 65, 81)
     doc.line(margin, y, margin + 520, y)
     y += 16
@@ -897,4 +965,3 @@ document.getElementById("btn-export")?.addEventListener("click", () => {
   }
   exportManagementPdf()
 })
-
