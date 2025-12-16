@@ -314,7 +314,7 @@ count dated ≤ today (future dates are ignored).
   // =========================
   return `
 <strong>${decision}</strong><br>
-Right now we have <strong>${onHand} units</strong> on hand.<br>
+ Right now we have <strong>${onHand} units</strong> on hand.<br>
  Recent usage: <strong>${dailyUsage.toFixed(2)} units/day</strong>
 (~${Math.round(weeklyUsage)} per week).<br>
  Observed supplier lead time: <strong>${leadDays !== null ? `${leadDays} working days` : "Insufficient history"}</strong> (${vendor}).<br>
