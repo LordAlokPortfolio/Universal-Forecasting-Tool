@@ -265,15 +265,6 @@ function patternLabel(s){
   if(ratio<-0.25)return"Demand slowing (last 30d < 90d)"
   return"Stable demand"
 }
-// -----------------------------
-// DEAD / INACTIVE SKU GATE
-// -----------------------------
-const annualDemand = dailyUsage * 260
-const isDead =
-  (s.window90.adjusted === 0) ||
-  (annualDemand < 6) ||
-  (s.class === "C" && dailyUsage < 0.05)
-
 
 
 function recommendation(s) {
@@ -862,7 +853,14 @@ function renderManagement(){
 
   sorted.forEach(s=>{
     const dailyUsage = getPlanningUsage(s)
-
+// -----------------------------
+// DEAD / INACTIVE SKU GATE
+// -----------------------------
+    const annualDemand = dailyUsage * 260
+    const isDead =
+      (s.window90.adjusted === 0) ||
+      (annualDemand < 6) ||
+      (s.class === "C" && dailyUsage < 0.05)
     const received = (state.supply[s.sku] || []).filter(x => !x.open && x.leadWeeks)
     const trueLead =
       received.length > 0
