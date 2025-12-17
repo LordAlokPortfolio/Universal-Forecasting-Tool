@@ -36,6 +36,12 @@ function parseUniversalDate(v) {
   const d = new Date(s.replace(/-/g, "/"))
   return isNaN(d) ? null : d
 }
+function inferCategory(s) {
+  const d = (s.desc || "").toLowerCase()
+  if (d.includes("jamb") || d.includes("brickmold")) return "WOOD"
+  if (d.includes("paint") || d.includes("coating")) return "LTC PAINT"
+  return "OTHER"
+}
 
 function categoryDemandTrend(c) {
   let inc = 0, dec = 0, stable = 0
@@ -284,6 +290,22 @@ function recommendation(s) {
     isNaN(s.currentStock) ||
     (s.currentStockDate && new Date(s.currentStockDate) > today)
   ) {
+
+let poText = ""
+
+if (s._decision?.incomingQty && s._decision?.incomingDate) {
+  poText =
+    `An open purchase order for approximately ` +
+    `<strong>${s._decision.incomingQty}</strong> units ` +
+    `is expected on <strong>${s._decision.incomingDate}</strong>.<br>`
+}
+
+if (s._decision?.shortfall > 0) {
+  poText +=
+    `Based on current usage, inventory is expected to run short by ` +
+    `<strong>~${Math.round(s._decision.shortfall)} units</strong> before receipt.<br>`
+}
+
     return `
 <strong>INSUFFICIENT INVENTORY VISIBILITY</strong><br>
 Latest usable cycle count must be dated <strong>on or before today</strong>.<br>
@@ -322,12 +344,13 @@ count dated ≤ today (future dates are ignored).
   // =========================
   const WORKING_DAYS_PER_YEAR = 260
   const plannedQty24m = dailyUsage * WORKING_DAYS_PER_YEAR * 2
+  const openPO = s._decision?.incomingQty != null
 
   // =========================
   // DECISION LOGIC
   // =========================
   if (leadTimeDemand !== null && onHand < leadTimeDemand) {
-    decision = "PLACE ORDER "
+    decision = openPO ? "EXPEDITE / MONITOR OPEN PO ": "PLACE ORDER "
     reason = "Current stock will not cover supplier lead time demand."
   } else if (leadTimeDemand !== null) {
     decision = "NO ADDITIONAL ORDER REQUIRED (open PO already in transit)"
@@ -553,15 +576,17 @@ function parseSupply(rows) {
     // OPEN ORDER (NO RECEIVEDATE)
     // -----------------------------
     if (!recvDateRaw || String(recvDateRaw).trim() === "") {
-      if (!state.supply[sku]) state.supply[sku] = []
-      state.supply[sku].push({
-        vendor,
-        poDate: poDate,
-        recvDate: null,
-        open: true
-      })
-      return
+  if (!state.supply[sku]) state.supply[sku] = []
+  state.supply[sku].push({
+    vendor,
+    poDate: poDate,
+    recvDate: null,
+    qty: Number(r["Quantity"] || r["QTY"] || 0),
+    open: true
+  })
+  return
     }
+
 
     // -----------------------------
     // RECEIVED ORDER → LEAD TIME
@@ -633,12 +658,29 @@ function renderAnalyst(){
 /* =========================
    CATEGORY AGGREGATION
    ========================= */
+function inferCategory(s) {
+  const d = (s.desc || "").toLowerCase()
+
+  if (
+    d.includes("jamb") ||
+    d.includes("brickmold") ||
+    d.includes("window ext") ||
+    d.includes("door")
+  ) return "WOOD"
+
+  if (
+    d.includes("paint") ||
+    d.includes("coating")
+  ) return "LTC PAINT"
+
+  return "OTHER"
+}
 
 function aggregateByCategory(items) {
   const categories = {}
 
   items.forEach(s => {
-    const category = s.category || "UNASSIGNED"
+    const category = s.category || inferCategory(s)
     if (!categories[category]) {
       categories[category] = {
         name: category,
@@ -802,13 +844,45 @@ function renderManagement(){
           ? "Lead-time coverage: Inventory covers supplier lead time demand."
           : "Lead-time coverage: Inventory does NOT cover supplier lead time demand."
     }
+// ---- OPEN PO VISIBILITY ----
+const supplyEvents = state.supply[s.sku] || []
 
-    s._decision = {
+const today = new Date()
+today.setHours(0,0,0,0)
+
+const openPO = supplyEvents
+  .filter(x => x.open && x.poDate && x.poDate <= today)
+  .sort((a,b) => b.poDate - a.poDate)[0]
+
+let incomingQty = null
+let incomingDate = null
+let shortfall = null
+
+if (openPO && dailyUsage > 0) {
+  incomingQty = openPO.qty || null
+  incomingDate = formatESTDate(openPO.poDate)
+
+  const daysUntilReceipt = Math.max(
+    0,
+    daysBetween(today, openPO.poDate)
+  )
+
+  const demandUntilReceipt = dailyUsage * daysUntilReceipt
+  shortfall =
+    incomingQty !== null
+      ? Math.max(0, demandUntilReceipt - s.currentStock)
+      : null
+}
+
+     s._decision = {
       trueLeadWeeks: trueLead,
       coverageText,
-      recommendationText: recommendation(s)
-    }
-  })
+      recommendationText: recommendation(s),
+      incomingQty,
+      incomingDate,
+      shortfall
+    };
+  }) // ← CLOSE forEach HERE
 
   // ---- CATEGORY FIRST VIEW (UNCHANGED OUTPUT)
   const categories = aggregateByCategory(state.demand)
