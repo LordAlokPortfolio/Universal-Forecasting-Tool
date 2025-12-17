@@ -37,6 +37,38 @@ function parseUniversalDate(v) {
   return isNaN(d) ? null : d
 }
 
+function categoryDemandTrend(c) {
+  let inc = 0, dec = 0, stable = 0
+
+  c.skus.forEach(s => {
+    const label = patternLabel(s)
+    if (label.includes("increasing")) inc++
+    else if (label.includes("slowing")) dec++
+    else stable++
+  })
+
+  const total = c.skus.length
+  if (!total) return "No demand signal."
+
+  if (inc / total > 0.4) return "Category demand is increasing."
+  if (dec / total > 0.4) return "Category demand is slowing."
+  return "Category demand is stable."
+}
+
+
+function categoryCoverageNarrative(c) {
+  if (!c.skuCount) return "No active SKUs in this category."
+
+  if (c.placeOrder > 0) {
+    return `${c.riskPercent}% of SKUs do not cover supplier lead-time demand.`
+  }
+  if (c.review > 0) {
+    return `Partial lead-time exposure identified across the category.`
+  }
+  return `All SKUs are currently covered against supplier lead-time demand.`
+}
+
+
 function parseWithSelectedFormat(v) {
   if (state.supplyDateFormat === "AUTO") {
     return parseUniversalDate(v)
@@ -106,6 +138,12 @@ const HOLIDAYS = new Set([
   "2025-01-01","2025-02-17","2025-04-18","2025-05-19","2025-07-01","2025-09-01","2025-10-13","2025-12-25","2025-12-26",
   "2026-01-01","2026-02-16","2026-04-03","2026-05-18","2026-07-01","2026-09-07","2026-10-12","2026-12-25","2026-12-28"
 ])
+
+
+const PLANNING_DISCLAIMER =
+  "This represents expected consumption over the planning horizon and is not a purchase recommendation."
+
+
 
 const MONTH_MAP = {
   jan:0,feb:1,mar:2,apr:3,may:4,jun:5,
@@ -592,12 +630,151 @@ function renderAnalyst(){
   })
 }
 
+/* =========================
+   CATEGORY AGGREGATION
+   ========================= */
+
+function aggregateByCategory(items) {
+  const categories = {}
+
+  items.forEach(s => {
+    const category = s.category || "UNASSIGNED"
+    if (!categories[category]) {
+      categories[category] = {
+        name: category,
+        skus: [],
+        skuCount: 0,
+        totalDailyUsage: 0,
+        plannedQty24m: 0,
+        placeOrder: 0,
+        review: 0,
+        covered: 0,
+        riskSkus: []
+      }
+    }
+
+    const c = categories[category]
+    c.skus.push(s)
+    c.skuCount += 1
+    c.totalDailyUsage += s.avgPerWorkingDay
+    c.plannedQty24m += s.avgPerWorkingDay * 260 * 2
+
+    const rec = s._decision?.recommendationText || ""
+
+    if (rec.includes("PLACE ORDER")) {
+      c.placeOrder++
+      c.riskSkus.push(s)
+    } else if (rec.includes("REVIEW")) {
+      c.review++
+    } else {
+      c.covered++
+    }
+  })
+
+  Object.values(categories).forEach(c => {
+    c.weeklyUsage = c.totalDailyUsage * 5
+    c.riskPercent = c.skuCount
+      ? Math.round((c.placeOrder / c.skuCount) * 100)
+      : 0
+
+    // Sort risk SKUs: A-class first, highest usage first
+    c.riskSkus.sort((a, b) =>
+      a.class.localeCompare(b.class) ||
+      b.avgPerWorkingDay - a.avgPerWorkingDay
+    )
+  })
+
+  return categories
+}
+
+/* =========================
+   CATEGORY SUMMARY + EXCEPTIONS
+   ========================= */
+
+function renderCategoryBlocks(categories) {
+  const r = document.getElementById("rolodex")
+  if (!r) return
+
+  Object.values(categories).forEach(c => {
+    // ---- Category decision label ----
+    const categoryDecision =
+      c.placeOrder > 0
+        ? "IMMEDIATE REPLENISHMENT FOCUS REQUIRED"
+        : c.review > 0
+          ? "MONITOR — PARTIAL COVERAGE"
+          : "STABLE — NO IMMEDIATE ACTION"
+
+    // ---- Category owner cue ----
+    const ownerCue =
+      c.placeOrder > 0
+        ? "Buyer action required"
+        : c.review > 0
+          ? "Planner monitoring"
+          : "No immediate action"
+
+    // ---- CATEGORY SUMMARY BLOCK ----
+    r.innerHTML += `
+      <div class="category-summary">
+        <h2>${c.name}</h2>
+
+        <p>
+          ${c.skuCount} SKUs |
+          ${c.totalDailyUsage.toFixed(1)} units/day |
+          ${(c.totalDailyUsage * 5).toFixed(1)} units/week
+        </p>
+
+        <p>
+          ${c.placeOrder} action |
+          ${c.review} monitor |
+          ${c.covered} covered
+          (${c.riskPercent}% at risk)
+        </p>
+
+        <p>
+          <strong>Coverage:</strong> ${categoryCoverageNarrative(c)}
+        </p>
+
+        <p>
+          <strong>Demand behavior:</strong> ${categoryDemandTrend(c)}
+        </p>
+
+        <p>
+          <strong>24-month category demand:</strong>
+          ~${Math.round(c.plannedQty24m).toLocaleString()} units
+          <br><span class="muted">${PLANNING_DISCLAIMER}</span>
+        </p>
+
+
+        <p><strong>Category stance:</strong> ${categoryDecision}</p>
+        <p><strong>Ownership:</strong> ${ownerCue}</p>
+      </div>
+    `
+
+    // ---- EXCEPTIONS ONLY (TOP 10) ----
+    c.riskSkus.slice(0, 10).forEach(s => {
+      r.innerHTML += `
+        <div class="card card-${s.class}">
+          <div class="card-title">
+            ${s.sku}
+            <span class="badge badge-${s.class}">${s.class}</span>
+          </div>
+          <div class="card-desc">${s.desc}</div>
+          <div class="card-footer">
+            ${s._decision.recommendationText}
+          </div>
+        </div>
+      `
+    })
+  })
+}
+
 
 function renderManagement(){
   const r = document.getElementById("rolodex")
   if (!r) return
   r.innerHTML = ""
 
+  // ---- ENSURE SKU DECISIONS EXIST (CRITICAL LOGIC – PRESERVED)
   const sorted = [...state.demand].sort((a,b)=>
     a.class.localeCompare(b.class) ||
     b.avgPerWorkingDay - a.avgPerWorkingDay ||
@@ -606,15 +783,7 @@ function renderManagement(){
   )
 
   sorted.forEach(s=>{
-    const vendor = s.vendor || "Vendor not provided"
-    const abc = s.class
-
-    const u30 = s.window30.adjusted
-    const u60 = s.window60.adjusted
-    const u90 = s.window90.adjusted
-
     const dailyUsage = getPlanningUsage(s)
-    const weeklyUsage = dailyUsage * 5
 
     const received = (state.supply[s.sku] || []).filter(x => !x.open && x.leadWeeks)
     const trueLead =
@@ -622,25 +791,6 @@ function renderManagement(){
         ? median(received.map(x => x.leadWeeks))
         : null
 
-
-    const monthsCover = trueLead !== null ? (trueLead / 4.33).toFixed(1) : "—"
-    // Next receipt (EST date only, no time)
-    const supplyEvents = state.supply[s.sku] || []
-
-    const today = new Date()
-    today.setHours(0,0,0,0)
-
-    // latest OPEN PO DATE ≤ today
-    const openOrder = supplyEvents
-      .filter(x => x.open && x.poDate && x.poDate <= today)
-      .sort((a,b) => b.poDate - a.poDate)[0]
-
-    const nextReceipt = openOrder
-      ? formatESTDate(openOrder.poDate)
-      : "None"
-
-
-    // Lead-time coverage (clear wording)
     let coverageText = "Lead-time coverage: Insufficient data."
 
     if (dailyUsage > 0 && trueLead !== null && s.currentStock !== null) {
@@ -652,68 +802,17 @@ function renderManagement(){
           ? "Lead-time coverage: Inventory covers supplier lead time demand."
           : "Lead-time coverage: Inventory does NOT cover supplier lead time demand."
     }
-    // === STORE MANAGEMENT DECISION (for PDF reuse) ===
+
     s._decision = {
       trueLeadWeeks: trueLead,
       coverageText,
-      recommendationText: recommendation(s),
+      recommendationText: recommendation(s)
     }
-
-    r.innerHTML += `
-      <div class="card card-${abc}">
-        <div class="card-title">
-          ${s.sku}
-          <span class="badge badge-${abc}">${abc}</span>
-        </div>
-
-        <div class="card-desc">${s.desc}</div>
-
-        <div class="card-body">
-          <strong>Usage (units / working day)</strong><br>
-          30d: ${u30.toFixed(3)} |
-          60d: ${u60.toFixed(3)} |
-          90d: ${u90.toFixed(3)}
-
-          <br><br>
-          <strong>Planning rate (${state.planning.window}d)</strong><br>
-          ${dailyUsage.toFixed(3)} / day
-          (${weeklyUsage.toFixed(1)} / week)
-
-          <br><br>
-          <strong>Supply</strong><br>
-          Vendor:
-          <input class="inline-edit" value="${vendor}"
-            onchange="
-              const d = state.demand.find(x=>x.sku==='${s.sku}')
-              if (d) d.vendor=this.value
-              if(!state.leadTimes[this.value]) state.leadTimes[this.value]=[]
-              renderManagement()
-            ">
-          <br>
-          Lead time:
-          <input class="inline-edit" value="${(trueLead !== null ? trueLead.toFixed(2) : "—")}"
-            onchange="
-              if (!state.leadTimes['${vendor}']) state.leadTimes['${vendor}'] = []
-              state.leadTimes['${vendor}'].push(Number(this.value))
-              renderManagement()
-            "> weeks
-          <br>
-          True lead time: ${(trueLead !== null ? trueLead.toFixed(2) : "—")} weeks
-          (~${monthsCover} months)
-          <br>
-          Next receipt: ${nextReceipt}
-
-          <br><br>
-          <strong>Risk</strong><br>
-          ${coverageText}
-        </div>
-
-        <div class="card-footer">
-          ${recommendation(s)}
-        </div>
-      </div>
-    `
   })
+
+  // ---- CATEGORY FIRST VIEW (UNCHANGED OUTPUT)
+  const categories = aggregateByCategory(state.demand)
+  renderCategoryBlocks(categories)
 }
 
 
@@ -976,6 +1075,37 @@ function exportManagementPdf() {
   y += 24
 
   // =========================
+// CATEGORY SUMMARY (PDF)
+// =========================
+const categories = aggregateByCategory(state.demand)
+
+Object.values(categories).forEach(c => {
+  ensureSpace(6)
+
+  doc.setFont("Helvetica", "bold")
+  writeLine(`${c.name} — Category Summary`)
+  doc.setFont("Helvetica", "normal")
+
+  writeLine(
+    `${c.skuCount} SKUs | ` +
+    `${c.totalDailyUsage.toFixed(1)} units/day | ` +
+    `${(c.totalDailyUsage * 5).toFixed(1)} units/week`
+  )
+
+  writeLine(categoryCoverageNarrative(c))
+  writeLine(categoryDemandTrend(c))
+
+  writeLine(
+    `24-month expected consumption: ~${Math.round(c.plannedQty24m).toLocaleString()} units.`
+  )
+  writeLine(PLANNING_DISCLAIMER)
+
+  y += 12
+})
+
+
+
+  // =========================
   // SORT SAME AS UI
   // =========================
   const items = [...state.demand].sort((a, b) =>
@@ -984,8 +1114,11 @@ function exportManagementPdf() {
     a.sku.localeCompare(b.sku)
   )
 
-  items.forEach(s => {
-    ensureSpace(8)
+  items
+  .filter(s => s._decision?.recommendationText.includes("PLACE ORDER"))
+  .forEach(s => {
+
+
 
     // =========================
     // SKU HEADER
