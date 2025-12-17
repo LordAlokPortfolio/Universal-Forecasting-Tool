@@ -161,54 +161,70 @@ input[type=file]{background:#020617;color:#e5e7eb;border:1px solid #1f2937;paddi
 <div id="about-view" class="hidden about">
   <h2>About This Tool</h2>
   <p>
-    Universal Forecasting Tool is a client-only demand planning application designed
-    to demonstrate real-world demand planner thinking using consumption-based data.
+    Universal Forecasting Tool is a client-only demand planning application built
+    to demonstrate practical, real-world demand planning using consumption-based data.
+    It reflects how demand planners analyze true demand signals in manufacturing
+    environments where transactional demand history is incomplete or distorted.
   </p>
 
-  <h3>Why it was built</h3>
+  <h3>Purpose</h3>
   <p>
-    Most inventory tools mix demand and supply and hide assumptions.
-    This tool was built to clearly separate consumption-based demand from supply visibility,
-    mirroring how demand planners actually work in manufacturing environments.
+    Operational systems often blend demand signals with supply events such as receipts,
+    open orders, and timing variability. This can obscure true consumption patterns.
+    This tool was built to isolate demand from inventory movements, enabling clearer
+    planning decisions before supply constraints are applied.
   </p>
 
-  <h3>How it works</h3>
+  <h3>Data Inputs</h3>
   <ul>
-    <li>Upload historical cycle counts (required)</li>
-    <li>Optionally upload purchase history for supplier and lead-time visibility</li>
-    <li>All calculations run entirely in the browser</li>
+    <li><strong>Cycle count history (required):</strong> Used as the primary demand signal</li>
+    <li><strong>Purchase history (optional):</strong> Used for supplier visibility and observed lead-time analysis</li>
   </ul>
 
-  <h3>Privacy statement</h3>
+  <h3>Methodology</h3>
   <p>
-    No data is stored, transmitted, or logged.
-    All files remain local to your browser session and are discarded on refresh.
+    Demand is derived strictly from stock reductions observed between consecutive
+    cycle counts. Usage is normalized by working days, excluding weekends and statutory
+    holidays, to ensure comparability across time periods.
+  </p>
+  <p>
+    Demand behavior is evaluated using rolling 30, 60, and 90-day windows to balance
+    short-term responsiveness with trend stability. Longer-term outlooks extend this
+    demand signal into a 0–24 month planning horizon.
   </p>
 
-  <h3>Demand forecasting method</h3>
-  <p>
-    Demand is calculated strictly from stock reductions between cycle counts.
-    Usage is normalized by working days (weekends and statutory holidays excluded)
-    and evaluated using rolling 30 / 60 / 90-day windows.
-  </p>
-
-  <h3>Management mode vs Analyst mode</h3>
+  <h3>Planning Views</h3>
   <ul>
-    <li><strong>Analyst mode</strong> exposes detailed metrics and adjusted usage calculations</li>
-    <li><strong>Management mode</strong> presents decision-focused SKU cards and recommendations</li>
+    <li>
+      <strong>Analyst View:</strong> Exposes detailed calculations, adjusted usage rates,
+      classification logic, and validation metrics used to derive demand.
+    </li>
+    <li>
+      <strong>Management View:</strong> Translates analytical outputs into
+      decision-focused SKU summaries and planning recommendations.
+    </li>
   </ul>
 
-  <h3>Developer credits</h3>
+  <h3>Data Handling & Privacy</h3>
   <p>
-    Designed and built by Alok Kulkarni. Intended for practical, real-world use.
+    All calculations are executed entirely within the browser.
+    No data is stored, transmitted, or logged. Uploaded files remain local to the
+    active session and are discarded upon refresh.
   </p>
 
-  <h3>Version info</h3>
+  <h3>Authorship</h3>
+  <p>
+    Designed and implemented as an independent demand planning prototype by
+    Alok Kulkarni, reflecting production manufacturing planning workflows.
+  </p>
+
+  <h3>Version</h3>
   <p class="muted">
     Universal Forecasting Tool — Version 14.1<br>
-    Client-only • Consumption-based demand • 0 to 24 month planning horizon
+    Client-only • Consumption-based demand • Short-term execution and 0–24 month outlook
   </p>
 </div>
+
 
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 
