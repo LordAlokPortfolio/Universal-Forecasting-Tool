@@ -585,20 +585,32 @@ function parseSupply(rows) {
     const poDate = parseWithSelectedFormat(poDateRaw)
     if (!poDate) return
 
-    // -----------------------------
-    // OPEN ORDER (NO RECEIVEDATE)
-    // -----------------------------
-    if (!recvDateRaw || String(recvDateRaw).trim() === "") {
+ // -----------------------------
+// OPEN ORDER (NO RECEIVEDATE)
+// -----------------------------
+if (!recvDateRaw || String(recvDateRaw).trim() === "") {
   if (!state.supply[sku]) state.supply[sku] = []
+
+  const qtyRaw =
+    r["Quantity"] ??
+    r["QTY"] ??
+    r["PO QTY"] ??
+    r["ORDER QTY"] ??
+    r["Qty"] ??
+    r["QUANTITY"] ??
+    null
+
   state.supply[sku].push({
     vendor,
     poDate: poDate,
     recvDate: null,
-    qty: Number(r["Quantity"] || r["QTY"] || 0),
+    qty: qtyRaw !== null && qtyRaw !== "" ? Number(qtyRaw) : null,
     open: true
   })
+
   return
-    }
+}
+
 
 
     // -----------------------------
@@ -1205,7 +1217,7 @@ Object.values(categories).forEach(c => {
   )
 
   items
-  .filter(s => s._decision?.recommendationText.includes("PLACE ORDER"))
+  .filter(s => s._decision?.incomingQty || s._decision?.incomingDate)
   .forEach(s => {
 
 
