@@ -455,6 +455,10 @@ function parseDemand(rows){
     const l = f.toLowerCase()
     return l.includes("vendor") || l.includes("supplier")
   }) || ""
+  const materialCol = fields.find(f => {
+    const l = f.toLowerCase()
+    return l.includes("material") && l.includes("type")
+  }) || ""
 
   const seen=new Map(),dup=new Set()
   const validation={missingStockCells:0,invalidStockCells:0,replenishmentEvents:0,duplicateSkus:[]}
@@ -488,17 +492,26 @@ function parseDemand(rows){
 
 series.push({
   sku,
-  desc: descCol ? String(row[descCol] || "").trim() : "Description not provided",
+  desc: descCol
+    ? String(row[descCol] || "").trim()
+    : "Description not provided",
   vendor: (
     vendorCol ? String(row[vendorCol] || "").trim() : ""
   ) || state.supply[sku]?.[0]?.vendor || "",
+  materialType: materialCol
+    ? String(row[materialCol] || "").trim().toUpperCase()
+    : "",
   history,
   totalQty,
   avgPerWorkingDay: totalWorking > 0 ? totalQty / totalWorking : 0,
-  window30, window60, window90,
+  window30,
+  window60,
+  window90,
   currentStock,
   class: null
 })
+
+
 
   })
 
@@ -680,7 +693,10 @@ function aggregateByCategory(items) {
   const categories = {}
 
   items.forEach(s => {
-    const category = s.category || inferCategory(s)
+    const category =
+      s.materialType ||
+      s.category ||
+      inferCategory(s)
     if (!categories[category]) {
       categories[category] = {
         name: category,
