@@ -1262,13 +1262,16 @@ Object.values(categories).forEach(c => {
     )
 
 
-        writeLine(
-          `Next receipt: ${
-            openOrder
-              ? `Open order (PO date ${formatESTDate(openOrder.poDate)})`
-              : "None"
-          }`
-        )
+    writeLine(
+      `Next receipt: ${
+        decision.incomingQty && decision.incomingDate
+          ? `~${decision.incomingQty} units expected on ${decision.incomingDate}`
+          : openOrder
+            ? `Open order (PO date ${formatESTDate(openOrder.poDate)})`
+            : "None"
+      }`
+    )
+
 
     // =========================
     // DECISION / RISK
